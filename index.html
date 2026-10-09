@@ -772,13 +772,15 @@
         window.addEventListener('firebase-loaded', async () => {
             // [設定教學] 請將下方的 firebaseConfig 替換為您在 Firebase 主控台取得的設定代碼
             const firebaseConfig = {
-                apiKey: "YOUR_API_KEY", // <--- 1. 替換成您的 API Key
-                authDomain: "your-project.firebaseapp.com", // <--- 2. 替換成您的 Auth Domain
-                projectId: "your-project", // <--- 3. 替換成您的 Project ID
-                storageBucket: "your-project.appspot.com",
-                messagingSenderId: "123456789",
-                appId: "1:123456789:web:abcdef"
-            };
+              apiKey: "AIzaSyAQd6Mz7_wMyOqgCRva0jcqlWHwljy4nSY",
+              authDomain: "nestprosystem.firebaseapp.com",
+              projectId: "nestprosystem",
+              storageBucket: "nestprosystem.firebasestorage.app",
+              messagingSenderId: "173379181940",
+              appId: "1:173379181940:web:3cb0240903eefc6acfe021",
+              measurementId: "G-9S53ZR1TBH"
+                };
+
 
             if (firebaseConfig.apiKey === "YOUR_API_KEY") {
                 console.log("⚠️ 尚未設定 Firebase 金鑰，目前使用離線 (LocalStorage) 模式。");
