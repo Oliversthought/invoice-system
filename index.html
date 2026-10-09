@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>來思製作內部系統</title>
+    <title>Enterprise Invoice & Dashboard System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <!-- Google Fonts: Noto Sans TC -->
@@ -13,11 +13,11 @@
     <!-- Firebase SDK 模組 (必須使用 type="module") -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         window.FirebaseModule = {
-            initializeApp, getAuth, signInAnonymously, signInWithCustomToken,
+            initializeApp, getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
             getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection
         };
         window.dispatchEvent(new Event('firebase-loaded'));
@@ -82,6 +82,24 @@
 </head>
 <body class="h-screen flex flex-col text-slate-800 overflow-hidden">
 
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="fixed inset-0 bg-slate-900/95 z-[100] flex items-center justify-center fade-in">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-[400px] text-center border border-slate-100">
+            <div class="w-16 h-16 bg-theme-light text-theme rounded-full flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-slate-800 mb-2">系統登入</h2>
+            <p class="text-sm text-slate-500 mb-8">Nest Production 授權人員專用</p>
+            
+            <button onclick="loginWithGoogle()" class="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:bg-slate-50 hover:border-theme text-slate-700 font-bold py-3 px-4 rounded-xl shadow-sm transition group">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5 group-hover:scale-110 transition" alt="Google">
+                使用 Google 帳號登入
+            </button>
+            
+            <p id="login-error" class="text-xs text-red-500 mt-4 hidden bg-red-50 p-2 rounded-lg border border-red-100"></p>
+        </div>
+    </div>
+
     <!-- Top Navigation Bar -->
     <header class="h-14 bg-white border-b border-slate-200 flex justify-between items-center px-4 shrink-0 z-20">
         <div class="flex items-center gap-6">
@@ -104,15 +122,19 @@
         
         <div class="relative">
             <button onclick="toggleUserMenu()" class="flex items-center gap-2 hover:bg-slate-50 p-2 rounded-lg transition">
-                <div class="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">
+                <div id="user-avatar-display" class="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 overflow-hidden shadow-sm border border-slate-300">
                     <i class="fa-solid fa-user text-xs"></i>
                 </div>
-                <span class="text-xs font-bold text-slate-600 hidden sm:block">系統管理員 <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i></span>
+                <span class="text-xs font-bold text-slate-600 hidden sm:block"><span id="user-name-display">驗證中...</span> <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i></span>
             </button>
             <!-- User Dropdown Menu -->
             <div id="user-menu" class="hidden absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
                 <button onclick="openSettings(); toggleUserMenu()" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-theme-light hover:text-theme flex items-center gap-2">
                     <i class="fa-solid fa-building"></i> 公司設置與上傳 Logo
+                </button>
+                <div class="border-t border-slate-100 my-1"></div>
+                <button onclick="logoutSystem()" class="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 flex items-center gap-2 transition">
+                    <i class="fa-solid fa-right-from-bracket"></i> 安全登出
                 </button>
             </div>
         </div>
@@ -768,9 +790,14 @@
         let useCloud = false;
         let db, auth, currentUserId, cloudAppId;
         let cloudDebounceTimer;
+        
+        // 🔒 授權白名單 (重要！請在這裡填入您自己和員工的 Google Email)
+        const ALLOWED_EMAILS = [
+            'oliver@nestgrowthmarketing.com', // <--- 替換成您的真實 Email
+            'hongkammeng@gmail.com'       // <--- 如果有其他員工，加在下面
+        ];
 
         window.addEventListener('firebase-loaded', async () => {
-            // [設定教學] 請將下方的 firebaseConfig 替換為您在 Firebase 主控台取得的設定代碼
             const firebaseConfig = {
                 apiKey: "AIzaSyAQd6Mz7_wMyOqgCRva0jcqlWHwljy4nSY",
                 authDomain: "nestprosystem.firebaseapp.com",
@@ -781,28 +808,73 @@
                 measurementId: "G-9S53ZR1TBH"
             };
 
-            if (firebaseConfig.apiKey === "YOUR_API_KEY") {
-                console.log("⚠️ 尚未設定 Firebase 金鑰，目前使用離線 (LocalStorage) 模式。");
-                return;
-            }
-
             try {
-                const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore } = window.FirebaseModule;
+                const { initializeApp, getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, getFirestore } = window.FirebaseModule;
 
-                cloudAppId = typeof __app_id !== 'undefined' ? __app_id : 'invoice-system';
+                cloudAppId = 'invoice-system';
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
+                const provider = new GoogleAuthProvider();
+                
+                let authInitialized = false;
 
-                // 強制使用匿名登入，忽略環境測試金鑰
-                await signInAnonymously(auth);
+                // 監聽登入狀態與審查權限
+                onAuthStateChanged(auth, (user) => {
+                    const overlay = document.getElementById('login-overlay');
+                    const errorMsg = document.getElementById('login-error');
+                    
+                    if (user) {
+                        // 檢查 Email 是否在白名單中
+                        if (ALLOWED_EMAILS.includes(user.email)) {
+                            currentUserId = user.uid;
+                            useCloud = true;
+                            overlay.classList.add('hidden'); // 權限通過，隱藏保護網
+                            
+                            // 更新右上角頭像與名稱
+                            document.getElementById('user-name-display').innerText = user.displayName || user.email.split('@')[0];
+                            if(user.photoURL) {
+                                document.getElementById('user-avatar-display').innerHTML = `<img src="${user.photoURL}" class="w-full h-full rounded-full object-cover">`;
+                            }
+                            
+                            // 啟動資料同步 (避免重複啟動)
+                            if(!authInitialized) {
+                                authInitialized = true;
+                                startCloudListeners();
+                            }
+                        } else {
+                            // 無權限，強制登出並顯示錯誤
+                            errorMsg.innerHTML = `抱歉，帳號 <b>${user.email}</b> 沒有存取權限。<br>請聯絡系統管理員新增。`;
+                            errorMsg.classList.remove('hidden');
+                            signOut(auth);
+                        }
+                    } else {
+                        // 未登入，顯示登入保護網
+                        overlay.classList.remove('hidden');
+                        authInitialized = false;
+                    }
+                });
 
-                if (!auth.currentUser) return;
-                currentUserId = auth.currentUser.uid;
-                useCloud = true;
-                console.log("☁️ 成功連接 Firebase 雲端資料庫！");
+                // 掛載登入功能供按鈕使用
+                window.loginWithGoogle = async () => {
+                    const errorMsg = document.getElementById('login-error');
+                    errorMsg.classList.add('hidden');
+                    try {
+                        await signInWithPopup(auth, provider);
+                    } catch (err) {
+                        console.error("登入失敗:", err);
+                        errorMsg.innerText = "登入取消或發生錯誤。";
+                        errorMsg.classList.remove('hidden');
+                    }
+                };
 
-                startCloudListeners();
+                // 掛載登出功能供按鈕使用
+                window.logoutSystem = () => {
+                    signOut(auth).then(() => {
+                        window.location.reload();
+                    });
+                };
+
             } catch(err) {
                 console.error("Firebase 連線失敗:", err);
             }
