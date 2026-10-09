@@ -864,11 +864,14 @@
                     // 只處理從雲端下載的外部變更，保護本機的輸入狀態
                     if (!docSnap.metadata.hasPendingWrites) {
                         hasExternalChanges = true;
-                        const data = docSnap.data().list || [];
-                        if (docSnap.id === 'clients') clients = data;
-                        if (docSnap.id === 'suppliers') suppliers = data;
-                        if (docSnap.id === 'employees') employees = data;
-                        if (docSnap.id === 'settings') settings = docSnap.data();
+                        const docData = docSnap.data();
+                        if (docData) {
+                            const data = docData.list || [];
+                            if (docSnap.id === 'clients') clients = data;
+                            if (docSnap.id === 'suppliers') suppliers = data;
+                            if (docSnap.id === 'employees') employees = data;
+                            if (docSnap.id === 'settings') settings = docData;
+                        }
                     }
                 });
                 
@@ -907,6 +910,7 @@
                 await Promise.all(promises);
             } catch (err) {
                 console.error("上傳至雲端失敗:", err);
+                alert("⚠️ 雲端存檔失敗，資料已退回原狀態！\n\n原因：您的 Firebase 資料庫目前是「鎖定」的 (無寫入權限)。\n\n請回 Firebase 後台 > Firestore Database > 規則 (Rules)，將權限改為 allow read, write: if true; 並點擊發布！");
             }
         }
         // --- 雲端邏輯結束 ---
