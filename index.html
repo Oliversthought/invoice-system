@@ -772,15 +772,14 @@
         window.addEventListener('firebase-loaded', async () => {
             // [設定教學] 請將下方的 firebaseConfig 替換為您在 Firebase 主控台取得的設定代碼
             const firebaseConfig = {
-              apiKey: "AIzaSyAQd6Mz7_wMyOqgCRva0jcqlWHwljy4nSY",
-              authDomain: "nestprosystem.firebaseapp.com",
-              projectId: "nestprosystem",
-              storageBucket: "nestprosystem.firebasestorage.app",
-              messagingSenderId: "173379181940",
-              appId: "1:173379181940:web:3cb0240903eefc6acfe021",
-              measurementId: "G-9S53ZR1TBH"
-                };
-
+                apiKey: "AIzaSyAQd6Mz7_wMyOqgCRva0jcqlWHwljy4nSY",
+                authDomain: "nestprosystem.firebaseapp.com",
+                projectId: "nestprosystem",
+                storageBucket: "nestprosystem.firebasestorage.app",
+                messagingSenderId: "173379181940",
+                appId: "1:173379181940:web:3cb0240903eefc6acfe021",
+                measurementId: "G-9S53ZR1TBH"
+            };
 
             if (firebaseConfig.apiKey === "YOUR_API_KEY") {
                 console.log("⚠️ 尚未設定 Firebase 金鑰，目前使用離線 (LocalStorage) 模式。");
@@ -795,11 +794,8 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                if (typeof __initial_auth_token !== 'undefined') {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth); // GitHub Pages 預設使用匿名登入
-                }
+                // 強制使用匿名登入，忽略環境測試金鑰
+                await signInAnonymously(auth);
 
                 if (!auth.currentUser) return;
                 currentUserId = auth.currentUser.uid;
@@ -819,44 +815,69 @@
             // 1. 監聽專案 (Projects)
             onSnapshot(collection(db, basePath, 'projects'), { includeMetadataChanges: true }, (snap) => {
                 let hasExternalChanges = false;
-                const cloudProjects = [];
-                snap.forEach(docSnap => {
-                    cloudProjects.push(docSnap.data());
-                    if (!docSnap.metadata.hasPendingWrites) hasExternalChanges = true; // 判斷是否為其他裝置的修改
-                });
+                let needsActiveReload = false;
 
                 // 自動遷移本機資料至雲端 (若雲端為空但本機有資料)
-                if (cloudProjects.length === 0 && projects.length > 0) {
+                if (snap.docs.length === 0 && projects.length > 0) {
                     console.log("☁️ 正在將本機專案備份至雲端...");
                     projects.forEach(p => setDoc(doc(db, basePath, 'projects', p.id), p).catch(console.error));
-                } else if (cloudProjects.length > 0 || hasExternalChanges) {
-                    projects = cloudProjects.sort((a, b) => b.id.localeCompare(a.id));
+                    return;
+                }
+
+                // 智能分析變更：只處理真正被修改的檔案，避免覆蓋正在打字的內容
+                snap.docChanges().forEach(change => {
+                    const docSnap = change.doc;
+                    if (change.type === 'removed') {
+                        projects = projects.filter(p => p.id !== docSnap.id);
+                        hasExternalChanges = true;
+                    } else {
+                        // 如果不是本機正在上傳的狀態 (代表是其他設備改的)
+                        if (!docSnap.metadata.hasPendingWrites) {
+                            hasExternalChanges = true;
+                            const idx = projects.findIndex(p => p.id === docSnap.id);
+                            if (idx > -1) {
+                                projects[idx] = docSnap.data();
+                            } else {
+                                projects.push(docSnap.data());
+                            }
+                            if (docSnap.id === activeProjectId) needsActiveReload = true;
+                        }
+                    }
+                });
+
+                if (hasExternalChanges) {
+                    projects.sort((a, b) => b.id.localeCompare(a.id));
                     localStorage.setItem('nest_projects', JSON.stringify(projects));
                     renderProjectList();
                     updateDashboard();
                     // 若當前開啟的單據被其他裝置修改，則自動重新載入編輯器
-                    if (hasExternalChanges && activeProjectId) loadEditor();
+                    if (needsActiveReload) loadEditor();
                 }
             }, (err) => console.error("Projects 同步錯誤:", err));
 
             // 2. 監聽客戶、供應商、員工與設定 (CRM)
             onSnapshot(collection(db, basePath, 'crm'), { includeMetadataChanges: true }, (snap) => {
                 let hasExternalChanges = false;
-                snap.forEach(docSnap => {
-                    const data = docSnap.data().list || [];
-                    if (docSnap.id === 'clients') clients = data;
-                    if (docSnap.id === 'suppliers') suppliers = data;
-                    if (docSnap.id === 'employees') employees = data;
-                    if (docSnap.id === 'settings') settings = docSnap.data();
-                    if (!docSnap.metadata.hasPendingWrites) hasExternalChanges = true;
+                
+                snap.docChanges().forEach(change => {
+                    const docSnap = change.doc;
+                    // 只處理從雲端下載的外部變更，保護本機的輸入狀態
+                    if (!docSnap.metadata.hasPendingWrites) {
+                        hasExternalChanges = true;
+                        const data = docSnap.data().list || [];
+                        if (docSnap.id === 'clients') clients = data;
+                        if (docSnap.id === 'suppliers') suppliers = data;
+                        if (docSnap.id === 'employees') employees = data;
+                        if (docSnap.id === 'settings') settings = docSnap.data();
+                    }
                 });
                 
-                localStorage.setItem('nest_clients', JSON.stringify(clients));
-                localStorage.setItem('nest_suppliers', JSON.stringify(suppliers));
-                localStorage.setItem('nest_employees', JSON.stringify(employees));
-                localStorage.setItem('nest_settings', JSON.stringify(settings));
-                
                 if (hasExternalChanges) {
+                    localStorage.setItem('nest_clients', JSON.stringify(clients));
+                    localStorage.setItem('nest_suppliers', JSON.stringify(suppliers));
+                    localStorage.setItem('nest_employees', JSON.stringify(employees));
+                    localStorage.setItem('nest_settings', JSON.stringify(settings));
+                    
                     renderClientList();
                     renderSupplierList();
                     renderEmployeeList();
@@ -872,13 +893,18 @@
             const basePath = `artifacts/${cloudAppId}/shared/company_data`;
 
             try {
-                const p = getActive();
-                if (p) await setDoc(doc(db, basePath, 'projects', p.id), p);
+                // 使用 Promise.all 將所有資料庫「同時」打包上傳，徹底消滅時間差(Race Condition)
+                const promises = [
+                    setDoc(doc(db, basePath, 'crm', 'clients'), { list: clients }),
+                    setDoc(doc(db, basePath, 'crm', 'suppliers'), { list: suppliers }),
+                    setDoc(doc(db, basePath, 'crm', 'employees'), { list: employees }),
+                    setDoc(doc(db, basePath, 'crm', 'settings'), settings)
+                ];
                 
-                await setDoc(doc(db, basePath, 'crm', 'clients'), { list: clients });
-                await setDoc(doc(db, basePath, 'crm', 'suppliers'), { list: suppliers });
-                await setDoc(doc(db, basePath, 'crm', 'employees'), { list: employees });
-                await setDoc(doc(db, basePath, 'crm', 'settings'), settings);
+                const p = getActive();
+                if (p) promises.push(setDoc(doc(db, basePath, 'projects', p.id), p));
+                
+                await Promise.all(promises);
             } catch (err) {
                 console.error("上傳至雲端失敗:", err);
             }
