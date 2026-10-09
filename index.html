@@ -168,6 +168,8 @@
                 <div class="p-4 bg-white border-b border-slate-200 flex justify-between items-center shadow-sm shrink-0 z-10">
                     <h2 class="text-sm font-bold text-slate-800"><i class="fa-solid fa-pen-to-square text-theme mr-2"></i>編輯單據</h2>
                     <div class="flex items-center gap-2">
+                        <span id="sync-status" class="text-[10px] font-bold w-16 text-right text-slate-400 transition-colors"></span>
+                        <button onclick="forceSyncToCloud()" class="px-2 py-1 bg-white border border-slate-200 text-slate-600 text-[11px] font-bold rounded shadow-sm hover:bg-slate-50 transition flex items-center gap-1" title="強制同步至雲端"><i class="fa-solid fa-cloud-arrow-up text-theme"></i> 儲存</button>
                         <select id="inp-doc-lang" onchange="syncInputToProject()" class="text-xs font-bold text-slate-600 bg-slate-100 border-none rounded p-1 outline-none cursor-pointer">
                             <option value="zh-HK">繁體中文</option>
                             <option value="en">English Output</option>
@@ -309,7 +311,6 @@
                 <div id="preview-toolbar" class="w-full flex justify-between items-center p-4 border-b border-slate-300 bg-slate-100 shrink-0 hidden">
                     <span class="text-xs font-bold text-slate-500"><i class="fa-solid fa-file-lines mr-1"></i> A4 實時預覽 (原尺寸滾動)</span>
                     <div class="space-x-2">
-                        <button onclick="window.print()" class="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded shadow-sm hover:bg-slate-50"><i class="fa-solid fa-print"></i> 列印</button>
                         <button onclick="exportPDF()" class="px-3 py-1.5 bg-theme text-white text-xs font-bold rounded shadow-sm hover:bg-blue-500"><i class="fa-solid fa-file-pdf"></i> 匯出 PDF</button>
                     </div>
                 </div>
@@ -852,7 +853,9 @@
                                 if (docSnap.exists()) {
                                     const data = docSnap.data();
                                     const authEmails = data.authorizedEmails || [];
-                                    if (authEmails.includes(user.email)) {
+                                    // 確保雙方都轉為全小寫，防止大小寫差異導致登入失敗
+                                    const userEmailLower = user.email ? user.email.toLowerCase() : "";
+                                    if (authEmails.includes(userEmailLower)) {
                                         isAllowed = true;
                                     }
                                 }
@@ -970,45 +973,16 @@
                 }
             }, (err) => console.error("Projects 同步錯誤:", err));
 
-            // 2. 監聽客戶、供應商、員工與設定 (CRM)
-            onSnapshot(collection(db, basePath, 'crm'), { includeMetadataChanges: true }, (snap) => {
-                let hasExternalChanges = false;
-                
-                snap.docChanges().forEach(change => {
-                    const docSnap = change.doc;
-                    // 只處理從雲端下載的外部變更，保護本機的輸入狀態
-                    if (!docSnap.metadata.hasPendingWrites) {
-                        hasExternalChanges = true;
-                        const docData = docSnap.data();
-                        if (docData) {
-                            const data = docData.list || [];
-                            if (docSnap.id === 'clients') clients = data;
-                            if (docSnap.id === 'suppliers') suppliers = data;
-                            if (docSnap.id === 'employees') employees = data;
-                            if (docSnap.id === 'settings') settings = docData;
-                        }
-                    }
-                });
-                
-                if (hasExternalChanges) {
-                    localStorage.setItem('nest_clients', JSON.stringify(clients));
-                    localStorage.setItem('nest_suppliers', JSON.stringify(suppliers));
-                    localStorage.setItem('nest_employees', JSON.stringify(employees));
-                    localStorage.setItem('nest_settings', JSON.stringify(settings));
-                    
-                    renderClientList();
-                    renderSupplierList();
-                    renderEmployeeList();
-                    updateSettingsUI();
-                    renderPreview();
-                }
-            }, (err) => console.error("CRM 同步錯誤:", err));
-        }
-
-        async function syncToCloud() {
+        async function syncToCloud(isManual = false) {
             if (!useCloud || !currentUserId) return;
             const { setDoc, doc } = window.FirebaseModule;
             const basePath = `artifacts/${cloudAppId}/shared/company_data`;
+            const statusEl = document.getElementById('sync-status');
+            
+            if (statusEl && !isManual) {
+                statusEl.innerText = '自動儲存中...';
+                statusEl.className = 'text-[10px] font-bold w-16 text-right text-theme';
+            }
 
             try {
                 // 使用 Promise.all 將所有資料庫「同時」打包上傳，徹底消滅時間差(Race Condition)
@@ -1023,10 +997,39 @@
                 if (p) promises.push(setDoc(doc(db, basePath, 'projects', p.id), p));
                 
                 await Promise.all(promises);
+                
+                if (statusEl) {
+                    statusEl.innerText = '雲端已同步';
+                    statusEl.className = 'text-[10px] font-bold w-16 text-right text-emerald-500';
+                    // 3秒後清除狀態文字
+                    setTimeout(() => { if(statusEl.innerText === '雲端已同步') statusEl.innerText = ''; }, 3000);
+                }
+                
+                // 只有手動點擊按鈕，才顯示成功的彈窗
+                if (isManual) alert('✅ 雲端同步成功！資料已安全備份。');
+                
             } catch (err) {
                 console.error("上傳至雲端失敗:", err);
-                alert("⚠️ 雲端存檔失敗，資料已退回原狀態！\n\n原因：您的 Firebase 資料庫目前是「鎖定」的 (無寫入權限)。\n\n請回 Firebase 後台 > Firestore Database > 規則 (Rules)，將權限改為 allow read, write: if true; 並點擊發布！");
+                
+                if (statusEl) {
+                    statusEl.innerText = '等待重試...';
+                    statusEl.className = 'text-[10px] font-bold w-16 text-right text-red-500';
+                }
+                
+                // 只有手動點擊按鈕才彈出錯誤，避免打字時一直被彈窗干擾
+                if (isManual) {
+                    alert("⚠️ 雲端存檔失敗！\n可能是網路不穩定或頻繁寫入被系統暫時阻擋，請稍後再試。");
+                }
             }
+        }
+        
+        async function forceSyncToCloud() {
+            const statusEl = document.getElementById('sync-status');
+            if (statusEl) {
+                statusEl.innerText = '手動儲存中...';
+                statusEl.className = 'text-[10px] font-bold w-16 text-right text-theme';
+            }
+            await syncToCloud(true);
         }
         // --- 雲端邏輯結束 ---
         
@@ -1078,9 +1081,16 @@
             localStorage.setItem('nest_suppliers', JSON.stringify(suppliers));
             localStorage.setItem('nest_employees', JSON.stringify(employees));
             
+            const statusEl = document.getElementById('sync-status');
+            if (statusEl && !statusEl.innerText.includes('儲存中')) {
+                statusEl.innerText = '等待儲存...';
+                statusEl.className = 'text-[10px] font-bold w-16 text-right text-slate-400';
+            }
+
             if (useCloud && currentUserId) {
                 clearTimeout(cloudDebounceTimer);
-                cloudDebounceTimer = setTimeout(syncToCloud, 800); // 延遲 800 毫秒後上傳，避免打字頻繁寫入
+                // 延長延遲時間到 1500 毫秒 (1.5秒)，大幅減少 Firebase 頻繁寫入阻擋
+                cloudDebounceTimer = setTimeout(() => syncToCloud(false), 1500); 
             }
         }
 
@@ -2095,6 +2105,10 @@
             settings.authorizedEmails.push(email);
             input.value = '';
             saveData();
+            
+            // 強制瞬間寫入雲端，避免因為過快點擊登出而遺失資料
+            if (useCloud && currentUserId) syncToCloud();
+            
             renderAuthorizedEmails();
             alert(`已成功授權 ${email} 登入系統！\n對方現在可以使用該 Google 帳號登入了。`);
         }
@@ -2105,6 +2119,10 @@
             if(confirm(`確定要移除 ${email} 的登入權限嗎？\n移除後對方將無法登入系統。`)) {
                 settings.authorizedEmails.splice(idx, 1);
                 saveData();
+                
+                // 強制瞬間寫入雲端
+                if (useCloud && currentUserId) syncToCloud();
+                
                 renderAuthorizedEmails();
             }
         }
@@ -2235,9 +2253,16 @@
             updateDashboard();
         }
 
+        function printDoc() {
+            forceSyncToCloud(); // 列印前強制同步一次
+            window.print();
+        }
+
         // PDF Export Handler
         function exportPDF() {
             try {
+                forceSyncToCloud(); // 匯出前強制同步一次
+                
                 // Export Target is the wrapper containing all pages
                 const el = document.getElementById('pdf-export-wrapper');
                 const p = getActive();
