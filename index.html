@@ -838,6 +838,7 @@
                     
                     if (user) {
                         let isAllowed = false;
+                        errorMsg.classList.add('hidden');
                         
                         // 1. 檢查是否為最高管理員
                         if (user.email === ROOT_ADMIN) {
@@ -857,10 +858,15 @@
                                     const userEmailLower = user.email ? user.email.toLowerCase() : "";
                                     if (authEmails.includes(userEmailLower)) {
                                         isAllowed = true;
+                                    } else {
+                                        errorMsg.innerHTML = `抱歉，帳號 <b>${userEmailLower}</b> 沒有存取權限。<br>系統白名單內未找到此 Email。<br>請聯絡管理員 (oliver) 開通。`;
                                     }
+                                } else {
+                                    errorMsg.innerHTML = `抱歉，雲端找不到授權設定檔案。<br>請聯絡管理員先行登入並建立設定。`;
                                 }
                             } catch (e) {
                                 console.error("驗證權限錯誤:", e);
+                                errorMsg.innerHTML = `連線驗證失敗：${e.message}`;
                             }
                         }
 
@@ -889,7 +895,6 @@
                             }
                         } else {
                             // 無權限，強制登出並顯示錯誤
-                            errorMsg.innerHTML = `抱歉，帳號 <b>${user.email}</b> 沒有存取權限。<br>請聯絡管理員 (oliver) 開通。`;
                             errorMsg.classList.remove('hidden');
                             signOut(auth);
                         }
@@ -2087,7 +2092,7 @@
             });
         }
 
-        function addAuthorizedEmail() {
+        async function addAuthorizedEmail() {
             if(!isAdmin) return;
             const input = document.getElementById('new-auth-email');
             const email = input.value.trim().toLowerCase();
@@ -2106,22 +2111,26 @@
             input.value = '';
             saveData();
             
-            // 強制瞬間寫入雲端，避免因為過快點擊登出而遺失資料
-            if (useCloud && currentUserId) syncToCloud();
+            // 強制瞬間寫入雲端，並等待完成 (不觸發手動存檔的重複彈窗)
+            if (useCloud && currentUserId) {
+                await syncToCloud(false);
+            }
             
             renderAuthorizedEmails();
             alert(`已成功授權 ${email} 登入系統！\n對方現在可以使用該 Google 帳號登入了。`);
         }
 
-        function removeAuthorizedEmail(idx) {
+        async function removeAuthorizedEmail(idx) {
             if(!isAdmin) return;
             const email = settings.authorizedEmails[idx];
             if(confirm(`確定要移除 ${email} 的登入權限嗎？\n移除後對方將無法登入系統。`)) {
                 settings.authorizedEmails.splice(idx, 1);
                 saveData();
                 
-                // 強制瞬間寫入雲端
-                if (useCloud && currentUserId) syncToCloud();
+                // 強制瞬間寫入雲端，並等待完成
+                if (useCloud && currentUserId) {
+                    await syncToCloud(false);
+                }
                 
                 renderAuthorizedEmails();
             }
@@ -2251,11 +2260,6 @@
         function dashChangePage(dir) {
             dashCurrentPage += dir;
             updateDashboard();
-        }
-
-        function printDoc() {
-            forceSyncToCloud(); // 列印前強制同步一次
-            window.print();
         }
 
         // PDF Export Handler
