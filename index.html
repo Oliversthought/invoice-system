@@ -212,7 +212,7 @@
 
                     <!-- Dates & Status -->
                     <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm grid grid-cols-2 gap-4">
-                        <div class="col-span-2">
+                        <div>
                             <label class="block text-[11px] font-bold text-slate-500 mb-1">單據狀態 (Status)</label>
                             <select id="inp-status" onchange="syncInputToProject()" class="w-full border border-slate-200 rounded p-2 text-xs font-bold outline-none focus:border-theme">
                                 <option value="draft">草稿 (Draft)</option>
@@ -220,6 +220,16 @@
                                 <option value="in_progress">進行中 (In Progress)</option>
                                 <option value="pending_payment">待收款 (Pending Payment)</option>
                                 <option value="completed">已完成 (Completed)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-500 mb-1">結算貨幣 (Currency)</label>
+                            <select id="inp-currency" onchange="syncInputToProject()" class="w-full border border-slate-200 rounded p-2 text-xs font-bold outline-none focus:border-theme">
+                                <option value="MOP">MOP</option>
+                                <option value="HKD">HKD</option>
+                                <option value="RMB">RMB</option>
+                                <option value="USD">USD</option>
+                                <option value="EUR">EUR</option>
                             </select>
                         </div>
                         <div class="col-span-2">
@@ -505,9 +515,9 @@
                                     <th class="px-4 py-3">客戶</th>
                                     <th class="px-4 py-3">負責人</th>
                                     <th class="px-4 py-3">狀態</th>
-                                    <th class="px-4 py-3 text-right">營業額 (MOP)</th>
-                                    <th class="px-4 py-3 text-right">成本 (MOP)</th>
-                                    <th class="px-4 py-3 text-right">盈利 (MOP)</th>
+                                    <th class="px-4 py-3 text-right">營業額</th>
+                                    <th class="px-4 py-3 text-right">成本</th>
+                                    <th class="px-4 py-3 text-right">盈利</th>
                                 </tr>
                             </thead>
                             <tbody id="dash-table-body" class="divide-y divide-slate-100 text-slate-700 text-xs">
@@ -960,6 +970,29 @@
             const { onSnapshot, collection, doc, setDoc } = window.FirebaseModule;
             const basePath = `artifacts/${cloudAppId}/shared/company_data`;
 
+            // 監聽 CRM 資料 (自動下載客戶、供應商、員工，解決資料不互通問題)
+            onSnapshot(doc(db, basePath, 'crm', 'clients'), (snap) => {
+                if (snap.exists() && !snap.metadata.hasPendingWrites) {
+                    clients = snap.data().list || [];
+                    localStorage.setItem('nest_clients', JSON.stringify(clients));
+                    renderClientList();
+                }
+            });
+            onSnapshot(doc(db, basePath, 'crm', 'suppliers'), (snap) => {
+                if (snap.exists() && !snap.metadata.hasPendingWrites) {
+                    suppliers = snap.data().list || [];
+                    localStorage.setItem('nest_suppliers', JSON.stringify(suppliers));
+                    renderSupplierList();
+                }
+            });
+            onSnapshot(doc(db, basePath, 'crm', 'employees'), (snap) => {
+                if (snap.exists() && !snap.metadata.hasPendingWrites) {
+                    employees = snap.data().list || [];
+                    localStorage.setItem('nest_employees', JSON.stringify(employees));
+                    renderEmployeeList();
+                }
+            });
+
             // 1. 監聽專案 (Projects)
             onSnapshot(collection(db, basePath, 'projects'), { includeMetadataChanges: true }, (snap) => {
                 let hasExternalChanges = false;
@@ -1202,6 +1235,7 @@
                 projName: '', custName: '', custContact: '',
                 status: 'draft',
                 employeeId: '',
+                currency: 'MOP',
                 issueDate: getTodayStr(),
                 dueDate: getThreeMonthsLaterStr(),
                 items: [{ desc: '', qty: 1, price: 0, isPageBreak: false }],
@@ -1300,6 +1334,7 @@
 
             // Basic Info
             document.getElementById('inp-doc-lang').value = p.lang || 'zh-HK';
+            document.getElementById('inp-currency').value = p.currency || 'MOP';
             document.getElementById('inp-proj-name').value = p.projName;
             document.getElementById('inp-cust-name').value = p.custName;
             document.getElementById('inp-cust-contact').value = p.custContact;
@@ -1462,6 +1497,7 @@
             if(!p) return;
             
             p.lang = document.getElementById('inp-doc-lang').value;
+            p.currency = document.getElementById('inp-currency').value;
             p.projName = document.getElementById('inp-proj-name').value;
             p.custName = document.getElementById('inp-cust-name').value;
             p.custContact = document.getElementById('inp-cust-contact').value;
@@ -1597,6 +1633,13 @@
                             <div id="supp-auto-${idx}" class="hidden absolute w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-32 overflow-y-auto z-50"></div>
                         </div>
                         <input type="text" oninput="updateCost(${idx}, 'desc', this.value)" value="${cost.desc || ''}" placeholder="成本說明" class="flex-1 border border-slate-200 rounded p-1.5 text-xs focus:border-rose-400 outline-none">
+                        <select onchange="updateCost(${idx}, 'currency', this.value)" class="w-20 border border-slate-200 rounded p-1 text-xs focus:border-rose-400 outline-none bg-white">
+                            <option value="MOP" ${cost.currency === 'MOP' ? 'selected' : ''}>MOP</option>
+                            <option value="HKD" ${cost.currency === 'HKD' ? 'selected' : ''}>HKD</option>
+                            <option value="RMB" ${cost.currency === 'RMB' ? 'selected' : ''}>RMB</option>
+                            <option value="USD" ${cost.currency === 'USD' ? 'selected' : ''}>USD</option>
+                            <option value="EUR" ${cost.currency === 'EUR' ? 'selected' : ''}>EUR</option>
+                        </select>
                         <input type="number" oninput="updateCost(${idx}, 'amount', this.value)" value="${cost.amount || 0}" placeholder="金額" class="w-20 border border-slate-200 rounded p-1.5 text-xs focus:border-rose-400 outline-none text-right">
                     </div>
                 `;
@@ -1607,7 +1650,7 @@
         function addCost() {
             const p = getActive();
             if(!p.costs) p.costs = [];
-            p.costs.push({ desc: '', supplier: '', amount: 0 });
+            p.costs.push({ desc: '', supplier: '', currency: p.currency || 'MOP', amount: 0 });
             saveData(); renderCostsEditor(); updateDashboard();
         }
 
@@ -1969,7 +2012,7 @@
                 }
             });
 
-            document.getElementById('pv-total').innerText = `MOP ${total.toFixed(2)}`;
+            document.getElementById('pv-total').innerText = `${p.currency || 'MOP'} ${total.toFixed(2)}`;
 
             // Terms
             document.getElementById('lbl-pv-terms').innerText = t.lblTerms;
@@ -2276,9 +2319,9 @@
                     <td class="px-4 py-3 max-w-[150px] truncate" title="${p.custName}">${p.custName || '-'}</td>
                     <td class="px-4 py-3 max-w-[100px] truncate text-slate-600 font-medium" title="${empName}">${empName}</td>
                     <td class="px-4 py-3 font-bold ${sColors[p.status]}">${sNames[p.status]}</td>
-                    <td class="px-4 py-3 text-right font-bold text-slate-800">${p.totalAmt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                    <td class="px-4 py-3 text-right font-bold text-rose-500">${p.costAmt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                    <td class="px-4 py-3 text-right font-bold ${p.profitAmt >= 0 ? 'text-emerald-600' : 'text-red-500'}">${p.profitAmt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                    <td class="px-4 py-3 text-right font-bold text-slate-800">${p.currency || 'MOP'} ${p.totalAmt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                    <td class="px-4 py-3 text-right font-bold text-rose-500">${p.currency || 'MOP'} ${p.costAmt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                    <td class="px-4 py-3 text-right font-bold ${p.profitAmt >= 0 ? 'text-emerald-600' : 'text-red-500'}">${p.currency || 'MOP'} ${p.profitAmt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                 `;
                 tbody.appendChild(tr);
             });
