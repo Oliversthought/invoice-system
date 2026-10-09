@@ -91,7 +91,7 @@
             <h2 class="text-2xl font-bold text-slate-800 mb-2">系統登入</h2>
             <p class="text-sm text-slate-500 mb-8">Nest Production 授權人員專用</p>
             
-            <button onclick="loginWithGoogle()" class="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:bg-slate-50 hover:border-theme text-slate-700 font-bold py-3 px-4 rounded-xl shadow-sm transition group">
+            <button id="btn-login-google" onclick="loginWithGoogle()" class="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:bg-slate-50 hover:border-theme text-slate-700 font-bold py-3 px-4 rounded-xl shadow-sm transition group">
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5 group-hover:scale-110 transition" alt="Google">
                 使用 Google 帳號登入
             </button>
@@ -908,14 +908,38 @@
                 // 掛載登入功能供按鈕使用
                 window.loginWithGoogle = async () => {
                     const errorMsg = document.getElementById('login-error');
+                    const loginBtn = document.getElementById('btn-login-google');
+                    
+                    // 防連點機制：顯示正在載入
+                    if (loginBtn) {
+                        loginBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在呼叫 Google...';
+                        loginBtn.disabled = true;
+                        loginBtn.classList.add('opacity-70', 'cursor-not-allowed');
+                    }
+                    
                     errorMsg.classList.add('hidden');
                     try {
                         await signInWithPopup(auth, provider);
                     } catch (err) {
                         console.error("登入失敗:", err);
-                        // 將模糊的錯誤訊息改成顯示具體的 Firebase 報錯，方便除錯
-                        errorMsg.innerText = "登入失敗：" + err.message;
+                        
+                        // 精準攔截視窗被封鎖的錯誤
+                        if (err.code === 'auth/popup-blocked') {
+                            errorMsg.innerHTML = "⚠️ <b>登入視窗被瀏覽器封鎖了！</b><br>請點擊網址列右側的圖示「允許彈出式視窗」，或使用無痕模式再試一次。";
+                        } else if (err.code === 'auth/popup-closed-by-user') {
+                            errorMsg.innerHTML = "提示：您關閉了登入視窗，請重新點擊登入。";
+                        } else {
+                            errorMsg.innerText = "登入失敗：" + err.message;
+                        }
+                        
                         errorMsg.classList.remove('hidden');
+                        
+                        // 恢復按鈕狀態
+                        if (loginBtn) {
+                            loginBtn.innerHTML = '<img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5 group-hover:scale-110 transition" alt="Google"> 使用 Google 帳號登入';
+                            loginBtn.disabled = false;
+                            loginBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                        }
                     }
                 };
 
@@ -977,6 +1001,7 @@
                     if (needsActiveReload) loadEditor();
                 }
             }, (err) => console.error("Projects 同步錯誤:", err));
+        }
 
         async function syncToCloud(isManual = false) {
             if (!useCloud || !currentUserId) return;
