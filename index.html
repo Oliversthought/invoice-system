@@ -805,8 +805,8 @@
         let db, auth, currentUserId, cloudAppId;
         let cloudDebounceTimer;
         
-        // 🔒 最高權限管理員設定
-        const ROOT_ADMIN = 'oliver@nestgrowthmarketing.com';
+        // 🔒 最高權限管理員設定 (升級為支援多位管理員)
+        const ROOT_ADMINS = ['oliver@nestgrowthmarketing.com', 'hongkammeng@gmail.com'];
         let isAdmin = false;
 
         window.addEventListener('firebase-loaded', async () => {
@@ -840,8 +840,11 @@
                         let isAllowed = false;
                         errorMsg.classList.add('hidden');
                         
-                        // 1. 檢查是否為最高管理員
-                        if (user.email === ROOT_ADMIN) {
+                        // 確保轉為全小寫比對，防止大小寫差異
+                        const userEmailLower = user.email ? user.email.toLowerCase() : "";
+                        
+                        // 1. 檢查是否為最高管理員名單內
+                        if (ROOT_ADMINS.includes(userEmailLower)) {
                             isAllowed = true;
                             isAdmin = true;
                         } else {
@@ -854,12 +857,10 @@
                                 if (docSnap.exists()) {
                                     const data = docSnap.data();
                                     const authEmails = data.authorizedEmails || [];
-                                    // 確保雙方都轉為全小寫，防止大小寫差異導致登入失敗
-                                    const userEmailLower = user.email ? user.email.toLowerCase() : "";
                                     if (authEmails.includes(userEmailLower)) {
                                         isAllowed = true;
                                     } else {
-                                        errorMsg.innerHTML = `抱歉，帳號 <b>${userEmailLower}</b> 沒有存取權限。<br>系統白名單內未找到此 Email。<br>請聯絡管理員 (oliver) 開通。`;
+                                        errorMsg.innerHTML = `抱歉，帳號 <b>${userEmailLower}</b> 沒有存取權限。<br>系統白名單內未找到此 Email。<br>請聯絡管理員開通。`;
                                     }
                                 } else {
                                     errorMsg.innerHTML = `抱歉，雲端找不到授權設定檔案。<br>請聯絡管理員先行登入並建立設定。`;
@@ -2127,8 +2128,9 @@
             
             if(!settings.authorizedEmails) settings.authorizedEmails = [];
             
-            if(settings.authorizedEmails.includes(email) || email === ROOT_ADMIN) {
-                alert("此帳號已經在授權名單中或為管理員帳號！");
+            // 檢查是否已經在白名單或已經是最高管理員
+            if(settings.authorizedEmails.includes(email) || ROOT_ADMINS.includes(email)) {
+                alert("此帳號已經在授權名單中，或已經是最高管理員帳號！");
                 return;
             }
             
