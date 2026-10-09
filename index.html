@@ -1,1956 +1,547 @@
 <!DOCTYPE html>
-<html lang="zh-HK">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enterprise Invoice & Dashboard System</title>
+    <title>企业级发票与收据管理系统 (云端同步版)</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <!-- Google Fonts: Noto Sans TC -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- html2pdf.js for Client-Side PDF Generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
     
+    <!-- === 引入 Firebase SDK 模組 === -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.FirebaseModule = { initializeApp, getAuth, signInAnonymously, getFirestore, doc, setDoc, onSnapshot };
+        window.dispatchEvent(new Event('firebase-loaded'));
+    </script>
+
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        theme: '#54b6e0',
-                        'theme-light': '#e6f4fb',
-                        'theme-dark': '#3a95be'
+                        brand: {
+                            50: '#eff6ff', 100: '#dbeafe', 500: '#2563eb',
+                            600: '#1d4ed8', 700: '#1e40af', 800: '#1e3a8a',
+                        }
                     },
-                    fontFamily: {
-                        sans: ['"Noto Sans TC"', 'sans-serif'],
-                    }
+                    fontFamily: { sans: ['Inter', 'Noto Sans SC', 'sans-serif'], }
                 }
             }
         }
     </script>
     <style>
-        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
-        
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        body { font-family: 'Inter', 'Noto Sans SC', sans-serif; background-color: #f8fafc; }
+
+        /* Standard A4 Paper Ratio Container */
+        .a4-preview {
+            width: 100%; max-width: 794px; min-height: 1080px; background: white;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+            margin: 0 auto; position: relative;
+        }
+
+        /* Print Media Styles Optimization */
+        @media print {
+            body { background: white !important; color: black !important; }
+            .no-print { display: none !important; }
+            .a4-preview { box-shadow: none !important; width: 100% !important; max-width: 100% !important; min-height: auto !important; padding: 0 !important; margin: 0 !important; }
+            @page { size: A4; margin: 10mm; }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        /* A4 Page Formatting */
-        .a4-preview-container {
-            width: 210mm;
-            /* removed height limit to allow auto expansion, PDF export logic will handle page breaks */
-            background: white;
-            position: relative;
-        }
-
-        /* PDF Export Protections */
-        .page-break-avoid { page-break-inside: avoid; break-inside: avoid; }
-        .manual-page-break { page-break-before: always; break-before: always; }
-        
-        /* Brand Specific Typography */
-        .brand-title { font-size: 12pt; font-weight: 900; color: #54b6e0; margin-bottom: 4px; letter-spacing: 0.5px; }
-        .brand-address { font-size: 8pt; color: #64748b; line-height: 1.4; font-weight: 500; }
-        
-        /* Table styling */
-        .print-table th { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .print-table td, .print-table th { padding: 10px 8px; word-break: break-word; }
-        
-        /* Modals & Animations */
-        .modal-overlay { background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(2px); }
-        .fade-in { animation: fadeIn 0.2s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-        /* Hide elements during print */
-        @media print {
-            .no-print { display: none !important; }
-            body { background: white; }
-            .a4-preview-container { box-shadow: none !important; margin: 0 !important; width: 100% !important; }
-        }
     </style>
 </head>
-<body class="h-screen flex flex-col text-slate-800 overflow-hidden">
+<body class="h-screen overflow-hidden flex flex-col text-slate-800">
 
-    <!-- Top Navigation Bar -->
-    <header class="h-14 bg-white border-b border-slate-200 flex justify-between items-center px-4 shrink-0 z-20">
-        <div class="flex items-center gap-6">
-            <div class="flex items-center gap-3 cursor-pointer" onclick="toggleSidebar()">
-                <div class="w-8 h-8 rounded-lg bg-theme flex items-center justify-center text-white shadow-sm">
-                    <i class="fa-solid fa-file-invoice text-sm"></i>
-                </div>
-                <span class="font-bold text-slate-800 tracking-wide text-sm hidden sm:block">Nest Production</span>
+    <!-- Top Global Header -->
+    <header class="bg-white border-b border-slate-200 h-14 flex items-center justify-between px-4 z-20 no-print shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="bg-blue-600 text-white p-1.5 rounded-lg shadow">
+                <i class="fa-solid fa-file-invoice-dollar text-lg"></i>
             </div>
-            
-            <!-- Global Nav Tabs -->
-            <div class="flex bg-slate-100 p-1 rounded-lg">
-                <button onclick="switchMainView('workspace')" id="nav-workspace" class="px-4 py-1.5 rounded-md text-xs font-bold bg-white text-theme shadow-sm transition">📋 單據工作台</button>
-                <button onclick="switchMainView('dashboard')" id="nav-dashboard" class="px-4 py-1.5 rounded-md text-xs font-bold text-slate-500 hover:text-slate-700 transition">📊 經營數據看板</button>
-                <button onclick="switchMainView('clients')" id="nav-clients" class="px-4 py-1.5 rounded-md text-xs font-bold text-slate-500 hover:text-slate-700 transition">👥 客戶列表</button>
-                <button onclick="switchMainView('suppliers')" id="nav-suppliers" class="px-4 py-1.5 rounded-md text-xs font-bold text-slate-500 hover:text-slate-700 transition">📦 供應商</button>
-                <button onclick="switchMainView('employees')" id="nav-employees" class="px-4 py-1.5 rounded-md text-xs font-bold text-slate-500 hover:text-slate-700 transition">🧑‍💼 員工</button>
+            <div>
+                <h1 class="font-bold text-sm sm:text-base text-slate-800 leading-none">企业项目发票与收据管理系统</h1>
+                <p class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                    <span id="cloud-status-indicator" class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                    <span id="cloud-status-text">单机离线模式</span>
+                </p>
             </div>
         </div>
-        
-        <div class="relative">
-            <button onclick="toggleUserMenu()" class="flex items-center gap-2 hover:bg-slate-50 p-2 rounded-lg transition">
-                <div class="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">
-                    <i class="fa-solid fa-user text-xs"></i>
-                </div>
-                <span class="text-xs font-bold text-slate-600 hidden sm:block">系統管理員 <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i></span>
-            </button>
-            <!-- User Dropdown Menu -->
-            <div id="user-menu" class="hidden absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
-                <button onclick="openSettings(); toggleUserMenu()" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-theme-light hover:text-theme flex items-center gap-2">
-                    <i class="fa-solid fa-building"></i> 公司設置與上傳 Logo
-                </button>
+
+        <div id="header-user-status" class="flex items-center space-x-3 hidden">
+            <div class="hidden sm:flex items-center gap-2 px-2.5 py-1 bg-slate-100 rounded-full text-xs text-slate-600">
+                <i class="fa-solid fa-circle-user text-blue-600"></i>
+                <span id="user-display-name">管理员</span>
             </div>
+            <button onclick="handleLogout()" class="text-xs text-slate-500 hover:text-red-600 px-2.5 py-1 rounded border border-slate-200 hover:border-red-200 transition flex items-center gap-1">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                <span class="hidden sm:inline">退出登录</span>
+            </button>
         </div>
     </header>
 
-    <!-- Main Container -->
-    <div class="flex-1 flex overflow-hidden relative">
+    <!-- MAIN WORKSPACE -->
+    <div id="app-container" class="flex-1 flex overflow-hidden hidden">
         
-        <!-- VIEW 1: WORKSPACE (Sidebar + Editor + Preview) -->
-        <div id="view-workspace" class="flex-1 flex w-full h-full">
-            
-            <!-- Sidebar (Projects List) -->
-            <div id="sidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0 transition-all duration-300">
-                <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">項目列表</span>
-                    <button onclick="createNewProject()" class="text-theme hover:text-blue-700 transition" title="新建項目"><i class="fa-solid fa-plus-circle text-lg"></i></button>
-                </div>
-                <div class="p-3 border-b border-slate-100">
-                    <div class="relative">
-                        <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-                        <input type="text" id="project-search" placeholder="搜尋項目..." oninput="renderProjectList()" class="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-full bg-slate-50 focus:bg-white focus:border-theme outline-none transition">
-                    </div>
-                </div>
-                <div id="project-list" class="flex-1 overflow-y-auto p-2 space-y-1">
-                    <!-- Projects will be generated here -->
+        <!-- LEFT SIDEBAR -->
+        <aside class="w-72 sm:w-80 bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800 shrink-0 no-print relative">
+            <div class="p-3 border-b border-slate-800/80 space-y-2">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-500"></i>
+                    <input type="text" id="project-search-input" oninput="renderProjectsSidebar()" placeholder="搜索项目或客户名称..." class="w-full bg-slate-800 text-xs text-slate-200 pl-8 pr-3 py-1.5 rounded-lg border border-slate-700/60 focus:outline-none focus:border-blue-500">
                 </div>
             </div>
+            <div id="projects-sidebar-list" class="flex-1 overflow-y-auto p-2 space-y-1.5"></div>
+            <div class="p-3 border-t border-slate-800/80 bg-slate-900/95 sticky bottom-0">
+                <button onclick="addNewProject()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs py-2.5 px-3 rounded-lg shadow transition flex items-center justify-center gap-2 group">
+                    <i class="fa-solid fa-circle-plus text-sm group-hover:scale-110 transition-transform"></i>
+                    <span>新增项目档案</span>
+                </button>
+            </div>
+        </aside>
 
-            <!-- Editor Panel (Left side of Workspace) -->
-            <div id="editor-panel" class="w-[450px] bg-slate-50 flex flex-col border-r border-slate-200 shrink-0 hidden">
-                <div class="p-4 bg-white border-b border-slate-200 flex justify-between items-center shadow-sm shrink-0 z-10">
-                    <h2 class="text-sm font-bold text-slate-800"><i class="fa-solid fa-pen-to-square text-theme mr-2"></i>編輯單據</h2>
-                    <div class="flex items-center gap-2">
-                        <select id="inp-doc-lang" onchange="syncInputToProject()" class="text-xs font-bold text-slate-600 bg-slate-100 border-none rounded p-1 outline-none cursor-pointer">
-                            <option value="zh-HK">繁體中文</option>
-                            <option value="en">English Output</option>
-                        </select>
-                        <button onclick="deleteCurrentProject()" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition" title="刪除此項目"><i class="fa-regular fa-trash-can"></i></button>
+        <!-- RIGHT MAIN AREA -->
+        <main class="flex-1 flex flex-col bg-slate-100 overflow-hidden relative">
+            <div id="empty-state-view" class="flex-1 flex flex-col items-center justify-center p-8 text-center hidden">
+                <div class="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center text-blue-500 mb-4 text-3xl"><i class="fa-solid fa-folder-plus"></i></div>
+                <h3 class="font-bold text-slate-700 text-lg mb-1">暂无项目档案</h3>
+                <button onclick="addNewProject()" class="px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg shadow hover:bg-blue-700 transition">新建项目档案</button>
+            </div>
+
+            <div id="project-workspace-view" class="flex-1 flex flex-col overflow-hidden">
+                <div class="bg-white border-b border-slate-200 px-4 pt-3 flex flex-wrap items-center justify-between gap-3 no-print shrink-0">
+                    <div class="flex items-center space-x-1 sm:space-x-2 border-b border-slate-200">
+                        <button id="tab-doc-quotation" onclick="switchDocType('QUOTATION')" class="px-3 py-2 text-xs font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-1.5 transition"><i class="fa-solid fa-clipboard-list"></i> 📋 报价单</button>
+                        <button id="tab-doc-invoice" onclick="switchDocType('INVOICE')" class="px-3 py-2 text-xs font-semibold border-b-2 border-transparent text-slate-500 flex items-center gap-1.5 transition"><i class="fa-solid fa-file-invoice"></i> 🧾 发票</button>
+                        <button id="tab-doc-receipt" onclick="switchDocType('RECEIPT')" class="px-3 py-2 text-xs font-semibold border-b-2 border-transparent text-slate-500 flex items-center gap-1.5 transition"><i class="fa-solid fa-receipt"></i> 💳 收据</button>
+                        <button id="tab-doc-settings" onclick="switchDocType('SETTINGS')" class="px-3 py-2 text-xs font-semibold border-b-2 border-transparent text-slate-500 flex items-center gap-1.5 transition"><i class="fa-solid fa-building"></i> ⚙️ 公司资料设置</button>
+                    </div>
+                    <div id="document-action-buttons" class="flex items-center space-x-2 pb-2">
+                        <button onclick="saveCurrentData()" class="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-medium text-xs rounded-lg transition"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
+                        <button onclick="window.print()" class="px-3 py-1.5 bg-slate-800 text-white font-medium text-xs rounded-lg shadow-sm"><i class="fa-solid fa-print"></i> 打印</button>
+                        <button onclick="exportToPDF()" class="px-3 py-1.5 bg-blue-600 text-white font-medium text-xs rounded-lg shadow"><i class="fa-solid fa-file-pdf"></i> 导出 PDF</button>
+                        <button onclick="deleteActiveProject()" class="p-1.5 text-slate-400 hover:text-red-600"><i class="fa-solid fa-trash-can text-sm"></i></button>
                     </div>
                 </div>
-                
-                <div class="flex-1 overflow-y-auto p-5 space-y-6">
-                    <!-- Doc Type Selector -->
-                    <div class="bg-white p-1 rounded-lg border border-slate-200 flex text-xs font-bold shadow-sm">
-                        <button onclick="updateDocType('quote')" id="btn-type-quote" class="flex-1 py-2 rounded-md transition text-slate-500 hover:bg-slate-50">📝 報價單</button>
-                        <button onclick="updateDocType('invoice')" id="btn-type-invoice" class="flex-1 py-2 rounded-md transition text-slate-500 hover:bg-slate-50">🧾 發票</button>
-                        <button onclick="updateDocType('receipt')" id="btn-type-receipt" class="flex-1 py-2 rounded-md transition text-slate-500 hover:bg-slate-50">💰 收據</button>
-                    </div>
 
-                    <!-- Client Info -->
-                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2"><i class="fa-solid fa-building-user text-theme mr-1"></i> 客戶資訊</h3>
-                        <div class="space-y-3">
-                            <div>
-                                <label class="block text-[11px] font-bold text-slate-500 mb-1">項目名稱 (Project Name)</label>
-                                <input type="text" id="inp-proj-name" oninput="syncInputToProject()" placeholder="例如: 品牌設計專案" class="w-full border border-slate-200 rounded p-2 text-xs focus:border-theme outline-none">
-                            </div>
-                            <div class="relative">
-                                <label class="block text-[11px] font-bold text-slate-500 mb-1">客戶名稱 (Bill To / Client Name)</label>
-                                <input type="text" id="inp-cust-name" oninput="syncInputToProject(); showClientAutocomplete(this.value)" onfocus="showClientAutocomplete(this.value)" onblur="setTimeout(() => hideClientAutocomplete(), 200)" placeholder="輸入關鍵字搜尋現有客戶，或直接輸入新客戶" autocomplete="off" class="w-full border border-slate-200 rounded p-2 text-xs focus:border-theme outline-none font-bold text-slate-800">
-                                <!-- Autocomplete Dropdown -->
-                                <div id="client-autocomplete" class="hidden absolute w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto z-50"></div>
-                            </div>
-                            <div>
-                                <div class="flex justify-between items-end mb-1">
-                                    <label class="block text-[11px] font-bold text-slate-500">客戶聯絡資訊 (Address / Contact)</label>
-                                    <button onclick="saveCurrentToClientList()" class="text-[10px] text-theme font-bold hover:underline" title="將目前輸入的客戶與資訊保存到客戶列表中">加入客戶庫</button>
+                <div class="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-0">
+                    <!-- LEFT COLUMN -->
+                    <div id="left-editor-panel" class="lg:col-span-5 border-r border-slate-200 bg-white p-4 sm:p-5 overflow-y-auto space-y-5 no-print">
+                        <!-- Settings Block -->
+                        <div id="settings-form-block" class="space-y-4 hidden">
+                            <div class="border-b pb-3"><h3 class="font-bold text-slate-800 text-sm">公司基本资料设置</h3></div>
+                            <div class="space-y-3 text-xs">
+                                <div><label class="block font-medium text-slate-600 mb-1">公司名称</label><input type="text" id="cfg-company-name" oninput="updateCompanyProfileFromForm()" class="w-full border border-slate-200 rounded-lg p-2"></div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div><label class="block font-medium text-slate-600 mb-1">税号</label><input type="text" id="cfg-tax-id" oninput="updateCompanyProfileFromForm()" class="w-full border border-slate-200 rounded-lg p-2"></div>
+                                    <div><label class="block font-medium text-slate-600 mb-1">联系电话</label><input type="text" id="cfg-phone" oninput="updateCompanyProfileFromForm()" class="w-full border border-slate-200 rounded-lg p-2"></div>
                                 </div>
-                                <textarea id="inp-cust-contact" rows="2" oninput="syncInputToProject()" placeholder="地址、電話或聯絡人" class="w-full border border-slate-200 rounded p-2 text-xs focus:border-theme outline-none"></textarea>
+                                <div><label class="block font-medium text-slate-600 mb-1">公司地址</label><input type="text" id="cfg-address" oninput="updateCompanyProfileFromForm()" class="w-full border border-slate-200 rounded-lg p-2"></div>
+                                <div><label class="block font-medium text-slate-600 mb-1">开户银行</label><input type="text" id="cfg-bank-name" oninput="updateCompanyProfileFromForm()" class="w-full border border-slate-200 rounded-lg p-2"></div>
+                                <div><label class="block font-medium text-slate-600 mb-1">银行账号</label><input type="text" id="cfg-bank-account" oninput="updateCompanyProfileFromForm()" class="w-full border border-slate-200 rounded-lg p-2"></div>
+                                <div class="pt-3 border-t border-slate-100 space-y-3">
+                                    <div><label class="block font-medium text-slate-600 mb-1">上传 Logo</label><input type="file" accept="image/*" onchange="uploadLogoFile(event)" class="text-xs"></div>
+                                    <div><label class="block font-medium text-slate-600 mb-1">上传印章</label><input type="file" accept="image/*" onchange="uploadStampFile(event)" class="text-xs"></div>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Dates & Status -->
-                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm grid grid-cols-2 gap-4">
-                        <div class="col-span-2">
-                            <label class="block text-[11px] font-bold text-slate-500 mb-1">單據狀態 (Status)</label>
-                            <select id="inp-status" onchange="syncInputToProject()" class="w-full border border-slate-200 rounded p-2 text-xs font-bold outline-none focus:border-theme">
-                                <option value="draft">草稿 (Draft)</option>
-                                <option value="quoted">已報價 (Quoted)</option>
-                                <option value="in_progress">進行中 (In Progress)</option>
-                                <option value="pending_payment">待收款 (Pending Payment)</option>
-                                <option value="completed">已完成 (Completed)</option>
-                            </select>
-                        </div>
-                        <div class="col-span-2">
-                            <label class="block text-[11px] font-bold text-slate-500 mb-1">負責員工 (Assigned To)</label>
-                            <select id="inp-employee" onchange="syncInputToProject()" class="w-full border border-slate-200 rounded p-2 text-xs font-bold outline-none focus:border-theme">
-                                <option value="">-- 無 --</option>
-                                <!-- JS populate -->
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-bold text-slate-500 mb-1">開單日期 (Issue Date)</label>
-                            <input type="date" id="inp-date" onchange="syncInputToProject()" class="w-full border border-slate-200 rounded p-2 text-xs outline-none focus:border-theme">
-                        </div>
-                        <div id="editor-due-container">
-                            <label class="block text-[11px] font-bold text-slate-500 mb-1">有效日期 (Valid Until)</label>
-                            <input type="date" id="inp-due" onchange="syncInputToProject()" class="w-full border border-slate-200 rounded p-2 text-xs outline-none focus:border-theme">
-                        </div>
-                    </div>
-
-                    <!-- Items List -->
-                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                        <div class="flex justify-between items-center border-b border-slate-100 pb-2">
-                            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider"><i class="fa-solid fa-list-check text-theme mr-1"></i> 產品與服務明細</h3>
-                        </div>
-                        
-                        <div id="items-container" class="space-y-3">
-                            <!-- Item editors generated here -->
-                        </div>
-                        
-                        <div class="flex gap-2">
-                            <button onclick="addItem()" class="flex-1 py-2 border border-dashed border-theme text-theme text-xs font-bold rounded-lg hover:bg-theme-light transition"><i class="fa-solid fa-plus mr-1"></i> 新增項目</button>
-                            <button onclick="addPageBreak()" class="py-2 px-3 border border-dashed border-slate-300 text-slate-500 text-xs font-bold rounded-lg hover:bg-slate-50 transition" title="在此插入換頁符號"><i class="fa-solid fa-scissors mr-1"></i> 換頁</button>
-                        </div>
-                    </div>
-
-                    <!-- Costs List (Internal) -->
-                    <div class="bg-white p-5 rounded-xl border border-rose-200 shadow-sm space-y-4">
-                        <div class="flex justify-between items-center border-b border-rose-100 pb-2">
-                            <h3 class="text-xs font-bold text-rose-600 uppercase tracking-wider"><i class="fa-solid fa-wallet mr-1"></i> 內部成本明細 (不顯示於單據)</h3>
-                        </div>
-                        
-                        <div id="costs-container" class="space-y-3">
-                            <!-- Cost editors generated here -->
-                        </div>
-                        
-                        <div class="flex gap-2">
-                            <button onclick="addCost()" class="flex-1 py-2 border border-dashed border-rose-300 text-rose-500 text-xs font-bold rounded-lg hover:bg-rose-50 transition"><i class="fa-solid fa-plus mr-1"></i> 新增成本紀錄</button>
-                        </div>
-                    </div>
-
-                    <!-- Terms -->
-                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                        <div class="mb-2">
-                            <div class="flex justify-between items-center mb-1">
-                                <label class="block text-[11px] font-bold text-slate-500">條款與備註 (Terms & Conditions)</label>
-                                <label class="flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" id="inp-terms-break" onchange="syncInputToProject()" class="w-3 h-3 text-theme rounded border-slate-300">
-                                    <span class="text-[10px] font-bold text-slate-500">將條款與簽名移至新一頁</span>
-                                </label>
+                        <!-- Project Block -->
+                        <div id="project-form-block" class="space-y-4">
+                            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-3">
+                                <h4 class="font-bold text-slate-700 text-xs flex justify-between border-b pb-2">
+                                    <span>项目与客户基本资料</span>
+                                    <select id="project-status-select" onchange="updateActiveProjectFromInputs()" class="text-xs border rounded"><option value="进行中">进行中</option><option value="已完成">已完成</option><option value="草稿">草稿</option></select>
+                                </h4>
+                                <div class="space-y-2 text-xs">
+                                    <div><label class="block text-slate-500 mb-0.5">项目名称</label><input type="text" id="input-project-name" oninput="updateActiveProjectFromInputs()" class="w-full border rounded p-2 text-slate-800 font-bold"></div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div><label class="block text-slate-500 mb-0.5">客户名称</label><input type="text" id="input-client-name" oninput="updateActiveProjectFromInputs()" class="w-full border rounded p-1.5"></div>
+                                        <div><label class="block text-slate-500 mb-0.5">客户税号</label><input type="text" id="input-client-tax" oninput="updateActiveProjectFromInputs()" class="w-full border rounded p-1.5"></div>
+                                    </div>
+                                    <div><label class="block text-slate-500 mb-0.5">客户地址/电话</label><input type="text" id="input-client-address" oninput="updateActiveProjectFromInputs()" class="w-full border rounded p-1.5"></div>
+                                </div>
                             </div>
-                            <textarea id="inp-terms" rows="4" oninput="syncInputToProject()" placeholder="輸入此單據的專屬條款與備註..." class="w-full border border-slate-200 rounded-lg p-2 text-xs focus:border-theme outline-none bg-slate-50"></textarea>
-                        </div>
-                    </div>
-
-                    <!-- Extra Pages Form -->
-                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                        <div class="flex justify-between items-center border-b border-slate-100 pb-2">
-                            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider"><i class="fa-solid fa-file-circle-plus text-theme mr-1"></i> 附加頁面 (Extra Pages)</h3>
-                            <button onclick="addExtraPage()" class="text-xs font-bold text-theme hover:text-blue-700 bg-theme-light px-2 py-1 rounded transition">+ 新增自定義頁</button>
-                        </div>
-                        <div id="extra-pages-container" class="space-y-3"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Preview Panel (Right side of Workspace) -->
-            <div id="preview-panel" class="flex-1 bg-slate-200/80 flex flex-col overflow-hidden no-print relative">
-                <!-- Empty State -->
-                <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 z-10">
-                    <div class="w-24 h-24 bg-theme-light rounded-full flex items-center justify-center mb-4 text-theme">
-                        <i class="fa-solid fa-file-invoice-dollar text-4xl"></i>
-                    </div>
-                    <h3 class="text-lg font-bold text-slate-700 mb-2">尚未選擇項目</h3>
-                    <p class="text-sm text-slate-500 mb-6">請從左側列表選擇一個項目，或建立新的單據。</p>
-                    <button onclick="createNewProject()" class="px-6 py-2 bg-theme text-white rounded-full font-bold shadow hover:bg-blue-500 transition"><i class="fa-solid fa-plus mr-2"></i>新建項目</button>
-                </div>
-
-                <!-- Toolbar -->
-                <div id="preview-toolbar" class="w-full flex justify-between items-center p-4 border-b border-slate-300 bg-slate-100 shrink-0 hidden">
-                    <span class="text-xs font-bold text-slate-500"><i class="fa-solid fa-file-lines mr-1"></i> A4 實時預覽 (原尺寸滾動)</span>
-                    <div class="space-x-2">
-                        <button onclick="window.print()" class="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded shadow-sm hover:bg-slate-50"><i class="fa-solid fa-print"></i> 列印</button>
-                        <button onclick="exportPDF()" class="px-3 py-1.5 bg-theme text-white text-xs font-bold rounded shadow-sm hover:bg-blue-500"><i class="fa-solid fa-file-pdf"></i> 匯出 PDF</button>
-                    </div>
-                </div>
-
-                <!-- Scrollable A4 Container -->
-                <div id="preview-scroll-area" class="flex-1 w-full overflow-y-auto flex flex-col items-center p-8 pb-20 hidden">
-                    
-                    <!-- WRAPPER FOR PDF EXPORT -->
-                    <div id="pdf-export-wrapper" class="w-[210mm] shrink-0">
-                        
-                        <div id="printable-a4" class="a4-preview-container px-[12mm] py-[12mm] shadow-xl relative text-slate-800 bg-white">
                             
-                            <!-- DOC HEADER -->
-                            <div id="pv-doc-header">
-                                <!-- 1. Header: Company Brand & Logo -->
-                                <div class="flex justify-between items-start mb-8">
-                                    <div class="brand-text">
-                                        <div class="brand-title">Nest Production Ltd.</div>
-                                        <div class="brand-address">Avenida doalmirante lacerda no.123<br>Edf. Industrial Hip Va 5 Andar 1021 Macau</div>
-                                    </div>
-                                    <div class="flex flex-col items-end">
-                                        <img id="pv-logo" class="h-16 max-w-[160px] object-contain hidden" alt="Company Logo">
-                                    </div>
+                            <div class="p-3.5 rounded-xl border border-slate-200 space-y-3">
+                                <div class="grid grid-cols-3 gap-2 text-xs">
+                                    <div><label class="block text-slate-500 mb-0.5">货币单位</label><select id="input-currency" onchange="updateActiveProjectFromInputs()" class="w-full border rounded p-1.5"><option value="CNY">CNY</option><option value="MOP">MOP</option><option value="HKD">HKD</option></select></div>
+                                    <div><label class="block text-slate-500 mb-0.5">开单日期</label><input type="date" id="input-doc-date" onchange="updateActiveProjectFromInputs()" class="w-full border rounded p-1.5"></div>
+                                    <div><label class="block text-slate-500 mb-0.5">有效期</label><input type="date" id="input-doc-duedate" onchange="updateActiveProjectFromInputs()" class="w-full border rounded p-1.5"></div>
                                 </div>
-
-                                <!-- 2. Document Title & Client Info (Bill To) -->
-                                <div class="flex justify-between items-end border-b-2 border-slate-800 pb-5 mb-6">
-                                    <!-- Left side: Client Info -->
-                                    <div class="w-1/2 pr-4">
-                                        <div class="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider" id="lbl-pv-billto">客戶資訊</div>
-                                        <div class="text-sm font-bold text-slate-800 mb-1" id="pv-cust-name"></div>
-                                        <div class="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed" id="pv-cust-contact"></div>
-                                    </div>
-                                    
-                                    <!-- Right side: Doc Meta -->
-                                    <div class="text-right">
-                                        <div class="text-3xl font-black tracking-widest text-slate-800 uppercase mb-4" id="pv-doc-title">報價單</div>
-                                        <div class="text-xs text-slate-600 flex flex-col items-end space-y-1.5">
-                                            <div class="flex gap-4"><span id="lbl-pv-date" class="w-20 text-right font-medium">日期</span> <span id="pv-date" class="w-24 text-right font-bold text-slate-800"></span></div>
-                                            <div class="flex gap-4"><span id="lbl-pv-docno" class="w-20 text-right font-medium">單據編號</span> <span id="pv-doc-no" class="w-24 text-right font-bold text-slate-800"></span></div>
-                                            <div class="flex gap-4" id="pv-due-container"><span id="lbl-pv-valid" class="w-20 text-right font-medium">報價有效日期</span> <span id="pv-due" class="w-24 text-right font-bold text-slate-800"></span></div>
-                                        </div>
-                                    </div>
+                                <div id="receipt-payment-field" class="grid grid-cols-2 gap-2 text-xs pt-1 hidden">
+                                    <div><label class="block text-slate-500 mb-0.5">收款状态</label><select id="input-payment-status" onchange="updateActiveProjectFromInputs()" class="w-full border rounded p-1.5"><option>已全额付款</option><option>未付款</option></select></div>
+                                    <div><label class="block text-slate-500 mb-0.5">支付方式</label><input type="text" id="input-payment-method" oninput="updateActiveProjectFromInputs()" class="w-full border rounded p-1.5"></div>
                                 </div>
                             </div>
 
-                            <!-- 3. Items Table -->
-                            <table class="w-full text-xs print-table mb-2">
-                                <thead>
-                                    <tr class="border-b-2 border-slate-800 text-slate-700">
-                                        <th class="text-left font-bold w-1/2" id="lbl-pv-desc">項目</th>
-                                        <th class="text-center font-bold w-16" id="lbl-pv-qty">數量</th>
-                                        <th class="text-right font-bold w-24" id="lbl-pv-price">單價</th>
-                                        <th class="text-right font-bold w-24" id="lbl-pv-amt">金額</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="pv-items-tbody">
-                                    <!-- Rows generated here -->
-                                </tbody>
-                            </table>
-
-                            <!-- 4. Totals -->
-                            <div class="flex justify-end mt-6 mb-6 page-break-avoid">
-                                <div class="w-64">
-                                    <div class="flex justify-between items-center py-3 border-t-2 border-slate-800">
-                                        <span class="font-bold text-sm text-slate-800" id="lbl-pv-total">應付總額</span>
-                                        <span class="font-black text-lg text-theme" id="pv-total">MOP 0.00</span>
-                                    </div>
+                            <div class="p-3.5 rounded-xl border border-slate-200 space-y-3">
+                                <div class="flex justify-between border-b pb-2"><h4 class="font-bold text-slate-700 text-xs">费用明细</h4><button onclick="addProjectItemRow()" class="text-blue-600 text-xs">+ 添加</button></div>
+                                <div id="items-inputs-container" class="space-y-2"></div>
+                                <div class="grid grid-cols-2 gap-2 text-xs border-t pt-2">
+                                    <div><label class="block text-slate-500 mb-0.5">税率 (%)</label><input type="number" id="input-tax-rate" oninput="updateActiveProjectFromInputs()" class="w-full border rounded p-1.5"></div>
+                                    <div><label class="block text-slate-500 mb-0.5">折扣减免</label><input type="number" id="input-discount-flat" oninput="updateActiveProjectFromInputs()" class="w-full border rounded p-1.5"></div>
                                 </div>
                             </div>
 
-                            <!-- 5. Terms & Signatures Wrapper -->
-                            <div id="pv-terms-container" class="page-break-avoid">
-                                <!-- Terms -->
-                                <div id="pv-terms-wrapper" class="mb-8">
-                                    <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1 inline-block" id="lbl-pv-terms">條款與備註</div>
-                                    <div class="text-[11px] text-slate-600 whitespace-pre-wrap leading-relaxed font-medium" id="pv-terms"></div>
-                                </div>
-
-                                <!-- Signatures -->
-                                <div class="flex justify-between items-end mt-8 relative">
-                                    <!-- Company Signature (Left) -->
-                                    <div class="w-64 text-center relative pt-8">
-                                        <div class="text-[10px] text-slate-500 mb-12">
-                                            <span id="lbl-pv-behalf">For and on behalf of</span><br>
-                                            <b class="text-slate-800 text-xs mt-1 block">Nest Production Ltd.</b>
-                                        </div>
-                                        <div class="border-b border-slate-800 mb-1.5"></div>
-                                        <div class="text-[9px] text-slate-400 uppercase tracking-wider" id="lbl-pv-auth">Authorized Signature & Company Stamp</div>
-                                        <img id="pv-stamp" class="absolute bottom-6 left-1/2 -translate-x-1/2 h-20 object-contain opacity-85 hidden pointer-events-none" alt="Stamp">
-                                    </div>
-
-                                    <!-- Client Signature (Right, for Quotes only) -->
-                                    <div id="pv-client-sign-container" class="w-64 text-center hidden pt-8">
-                                        <div class="text-[10px] text-slate-500 mb-12">
-                                            <span id="lbl-pv-accepted">Acknowledge & accepted by</span><br>
-                                            <b id="pv-sign-cust-name" class="text-slate-800 text-xs mt-1 block"></b>
-                                        </div>
-                                        <div class="border-b border-slate-800 mb-1.5"></div>
-                                        <div class="text-[9px] text-slate-400 uppercase tracking-wider" id="lbl-pv-client-auth">Client Signature & Company Stamp</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Spacer to push footer to the absolute bottom -->
-                            <div id="pv-spacer"></div>
-
-                            <!-- DOC FOOTER -->
-                            <div id="pv-doc-footer" class="mt-8 text-center text-[9px] text-slate-400 border-t border-slate-100 pt-3 page-break-avoid">
-                                Should you have any inquiry, Please feel free to contact us. +853 65712809 | inquiry@nestgrowthmarketing.com
-                            </div>
-                        </div> <!-- End printable-a4 -->
-                    </div> <!-- End pdf-export-wrapper -->
-                </div> <!-- End preview-scroll-area -->
-            </div>
-        </div>
-
-        <!-- VIEW 2: DASHBOARD -->
-        <div id="view-dashboard" class="flex-1 w-full h-full bg-slate-50 hidden overflow-y-auto p-6 md:p-10 relative z-0">
-            <div class="max-w-6xl mx-auto space-y-6">
-                <!-- Header & Controls -->
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h1 class="text-2xl font-bold text-slate-800"><i class="fa-solid fa-chart-pie text-theme mr-2"></i>經營數據看板</h1>
-                        <p class="text-sm text-slate-500 mt-1">即時掌握公司營收狀況與項目轉換率</p>
-                    </div>
-                    <div class="flex items-center gap-3 bg-white p-2 border border-slate-200 rounded-lg shadow-sm">
-                        <span class="text-xs font-bold text-slate-500"><i class="fa-regular fa-calendar mr-1"></i> 時間範圍</span>
-                        <select id="dash-time-range" onchange="updateDashboard()" class="text-sm font-bold text-slate-700 bg-transparent outline-none cursor-pointer">
-                            <option value="this_month">本月</option>
-                            <option value="last_month">上個月</option>
-                            <option value="this_quarter">本季度</option>
-                            <option value="this_year">今年度</option>
-                            <option value="all">全部時間</option>
-                            <option value="custom">📅 自定義範圍</option>
-                        </select>
-                        <!-- Custom Date Inputs -->
-                        <div id="dash-custom-dates" class="hidden items-center gap-2 border-l border-slate-200 pl-3">
-                            <input type="date" id="dash-start" onchange="updateDashboard()" class="text-xs border border-slate-200 rounded p-1 outline-none">
-                            <span class="text-slate-400 text-xs">-</span>
-                            <input type="date" id="dash-end" onchange="updateDashboard()" class="text-xs border border-slate-200 rounded p-1 outline-none">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- KPI Cards -->
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-blue-500">
-                        <div class="text-[10px] xl:text-xs font-bold text-slate-500 mb-1">總營業額</div>
-                        <div class="text-lg xl:text-xl font-black text-slate-800 truncate" id="dash-total-rev">MOP 0</div>
-                    </div>
-                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-rose-500">
-                        <div class="text-[10px] xl:text-xs font-bold text-slate-500 mb-1">總成本</div>
-                        <div class="text-lg xl:text-xl font-black text-rose-500 truncate" id="dash-cost">MOP 0</div>
-                    </div>
-                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-emerald-600">
-                        <div class="text-[10px] xl:text-xs font-bold text-slate-500 mb-1">總盈利 (利潤)</div>
-                        <div class="text-lg xl:text-xl font-black text-emerald-600 truncate" id="dash-profit">MOP 0</div>
-                    </div>
-                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-emerald-400">
-                        <div class="text-[10px] xl:text-xs font-bold text-slate-500 mb-1">已完成 / 已收款</div>
-                        <div class="text-lg xl:text-xl font-black text-emerald-500 truncate" id="dash-paid">MOP 0</div>
-                    </div>
-                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-amber-500">
-                        <div class="text-[10px] xl:text-xs font-bold text-slate-500 mb-1">待收款 / 進行中</div>
-                        <div class="text-lg xl:text-xl font-black text-amber-500 truncate" id="dash-pending">MOP 0</div>
-                    </div>
-                </div>
-
-                <!-- Project Details Table -->
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                    <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <h3 class="text-sm font-bold text-slate-800"><i class="fa-solid fa-list-ol text-theme mr-1"></i> 項目明細列表</h3>
-                        <div class="flex items-center gap-3">
-                            <div class="relative">
-                                <i class="fa-solid fa-search absolute left-3 top-2 text-slate-400 text-xs"></i>
-                                <input type="text" id="dash-search" placeholder="搜尋項目名稱/客戶..." oninput="dashCurrentPage=1; updateDashboard()" class="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:border-theme outline-none w-48">
-                            </div>
-                            <div class="text-xs font-bold bg-theme-light text-theme px-3 py-1.5 rounded-lg">
-                                列表總計: <span id="dash-table-total">MOP 0</span>
+                            <div class="p-3.5 rounded-xl border border-slate-200 text-xs">
+                                <label class="block text-slate-500 mb-1">备注条款</label>
+                                <textarea id="input-doc-notes" rows="2" oninput="updateActiveProjectFromInputs()" class="w-full border rounded p-2"></textarea>
+                                <label class="flex items-center gap-2 mt-2 cursor-pointer text-slate-600"><input type="checkbox" id="input-show-seal" onchange="updateActiveProjectFromInputs()" checked><span>显示电子印章</span></label>
                             </div>
                         </div>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm whitespace-nowrap">
-                            <thead class="bg-slate-50 text-slate-500 text-xs font-bold border-b border-slate-200">
-                                <tr>
-                                    <th class="px-4 py-3">開單日期</th>
-                                    <th class="px-4 py-3">單據編號</th>
-                                    <th class="px-4 py-3">類型</th>
-                                    <th class="px-4 py-3">項目名稱</th>
-                                    <th class="px-4 py-3">客戶</th>
-                                    <th class="px-4 py-3">負責人</th>
-                                    <th class="px-4 py-3">狀態</th>
-                                    <th class="px-4 py-3 text-right">營業額 (MOP)</th>
-                                    <th class="px-4 py-3 text-right">成本 (MOP)</th>
-                                    <th class="px-4 py-3 text-right">盈利 (MOP)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="dash-table-body" class="divide-y divide-slate-100 text-slate-700 text-xs">
-                                <!-- Rows -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <!-- Pagination -->
-                    <div class="p-3 border-t border-slate-100 bg-slate-50 flex justify-between items-center text-xs text-slate-500">
-                        <div id="dash-page-info">共 0 筆，第 1/1 頁</div>
-                        <div class="space-x-1 flex">
-                            <button onclick="dashChangePage(-1)" class="px-3 py-1 border border-slate-200 bg-white rounded hover:bg-slate-100 disabled:opacity-50">上一頁</button>
-                            <button onclick="dashChangePage(1)" class="px-3 py-1 border border-slate-200 bg-white rounded hover:bg-slate-100 disabled:opacity-50">下一頁</button>
+
+                    <!-- RIGHT COLUMN: Preview -->
+                    <div id="right-preview-panel" class="lg:col-span-7 bg-slate-200/80 p-4 sm:p-8 overflow-y-auto flex flex-col items-center">
+                        <div id="printable-document-card" class="a4-preview p-8 sm:p-12 text-slate-800 flex flex-col">
+                            <div class="flex justify-between items-start border-b-2 pb-6 border-slate-200">
+                                <div class="space-y-2.5 max-w-[58%]">
+                                    <div class="h-12 flex items-center"><img id="pv-logo-img" class="max-h-12 max-w-[180px] object-contain hidden" src=""></div>
+                                    <div>
+                                        <h2 id="pv-seller-name" class="font-bold text-lg leading-tight"></h2>
+                                        <p id="pv-seller-tax" class="text-xs text-slate-500 mt-1"></p>
+                                        <p id="pv-seller-address" class="text-xs text-slate-500"></p>
+                                        <p id="pv-seller-phone" class="text-xs text-slate-500"></p>
+                                    </div>
+                                </div>
+                                <div class="text-right space-y-2">
+                                    <span id="pv-doc-badge" class="inline-block text-xl font-black uppercase px-3 py-1 rounded bg-blue-100 text-blue-700"></span>
+                                    <div class="text-xs space-y-1 text-slate-600 font-mono">
+                                        <p><span class="text-slate-400">编号:</span> <span id="pv-doc-code" class="font-bold"></span></p>
+                                        <p><span class="text-slate-400">日期:</span> <span id="pv-doc-date"></span></p>
+                                        <p><span id="pv-duedate-label" class="text-slate-400">有效期:</span> <span id="pv-doc-duedate"></span></p>
+                                    </div>
+                                    <div id="pv-receipt-status-badge" class="inline-block mt-2 border border-emerald-500 text-emerald-600 font-bold text-[11px] px-2 py-0.5 rounded hidden"></div>
+                                </div>
+                            </div>
+
+                            <div class="my-6 p-4 rounded-lg bg-slate-50 border border-slate-100 grid grid-cols-2 gap-4 text-xs">
+                                <div>
+                                    <p class="font-semibold text-slate-400 text-[10px] mb-1">客户抬头:</p>
+                                    <h3 id="pv-client-name" class="font-bold text-slate-800 text-sm"></h3>
+                                    <p id="pv-client-tax" class="text-slate-500 mt-0.5"></p>
+                                </div>
+                                <div class="text-right flex flex-col justify-between">
+                                    <div><p class="font-semibold text-slate-400 text-[10px] mb-1">项目:</p><p id="pv-project-title" class="font-medium"></p></div>
+                                    <p id="pv-client-address" class="text-slate-500"></p>
+                                </div>
+                            </div>
+
+                            <div class="mt-6 flex-1">
+                                <table class="w-full text-left text-xs">
+                                    <thead><tr class="border-b-2 border-slate-200 text-slate-500 font-semibold"><th class="py-2.5 px-2">#</th><th class="py-2.5 px-2">项目内容</th><th class="py-2.5 px-2 text-right">数量</th><th class="py-2.5 px-2 text-right">单价</th><th class="py-2.5 px-2 text-right">金额</th></tr></thead>
+                                    <tbody id="pv-items-tbody" class="divide-y divide-slate-100 text-slate-700"></tbody>
+                                </table>
+                            </div>
+
+                            <div class="mt-6 pt-4 border-t border-slate-200 flex justify-end">
+                                <div class="w-60 space-y-1.5 text-xs">
+                                    <div class="flex justify-between text-slate-600"><span>小计:</span><span id="pv-math-subtotal" class="font-mono"></span></div>
+                                    <div class="flex justify-between text-slate-600"><span>折扣:</span><span id="pv-math-discount" class="font-mono text-red-500"></span></div>
+                                    <div class="flex justify-between text-slate-600"><span>税 (<span id="pv-math-taxrate"></span>%):</span><span id="pv-math-tax" class="font-mono"></span></div>
+                                    <div class="flex justify-between text-sm font-bold border-t pt-2"><span>总计:</span><span id="pv-math-grandtotal" class="font-mono text-base text-blue-600"></span></div>
+                                </div>
+                            </div>
+
+                            <div class="mt-8 grid grid-cols-2 gap-6 pt-6 border-t border-slate-100 text-xs text-slate-600">
+                                <div class="space-y-1"><p class="font-bold text-slate-800">收款账户</p><p>户名: <span id="pv-bank-name"></span></p><p>账号: <span id="pv-bank-account" class="font-mono"></span></p></div>
+                                <div class="space-y-1"><p class="font-bold text-slate-800">条款说明</p><p id="pv-doc-notes" class="whitespace-pre-line text-slate-500"></p></div>
+                            </div>
+
+                            <div class="mt-12 pt-4 border-t border-slate-100 flex justify-between items-end relative">
+                                <div class="text-[10px] text-slate-400"><p>感谢您的支持与合作！</p></div>
+                                <div class="text-center relative min-w-[150px]">
+                                    <p class="text-xs text-slate-500 mb-6">开票单位/盖章</p><div class="border-b border-slate-300 w-full"></div>
+                                    <img id="pv-stamp-img" class="absolute -top-6 right-2 w-28 h-28 object-contain pointer-events-none opacity-90 hidden">
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- VIEW 3: CLIENTS -->
-        <div id="view-clients" class="flex-1 w-full h-full bg-slate-50 hidden overflow-y-auto p-6 md:p-10 relative z-0">
-            <div class="max-w-5xl mx-auto space-y-6">
-                <!-- Header -->
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h1 class="text-2xl font-bold text-slate-800"><i class="fa-solid fa-users text-theme mr-2"></i>客戶列表</h1>
-                        <p class="text-sm text-slate-500 mt-1">集中管理客戶資訊與聯絡方式</p>
-                    </div>
-                    <button onclick="openClientModal()" class="px-5 py-2 bg-theme text-white text-sm font-bold rounded-lg shadow hover:bg-blue-500 transition"><i class="fa-solid fa-plus mr-1"></i> 新增客戶</button>
-                </div>
-
-                <!-- Client List Table -->
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                    <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <div class="relative w-64">
-                            <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-                            <input type="text" id="client-search" placeholder="搜尋客戶名稱或聯絡資訊..." oninput="renderClientList()" class="pl-8 pr-3 py-1.5 w-full text-xs border border-slate-200 rounded-lg bg-white focus:border-theme outline-none">
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm whitespace-nowrap">
-                            <thead class="bg-slate-50 text-slate-500 text-xs font-bold border-b border-slate-200">
-                                <tr>
-                                    <th class="px-4 py-3">客戶名稱</th>
-                                    <th class="px-4 py-3">聯絡資訊 / 地址</th>
-                                    <th class="px-4 py-3 w-24 text-center">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="client-table-body" class="divide-y divide-slate-100 text-slate-700 text-xs">
-                                <!-- Rows -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- VIEW 4: SUPPLIERS -->
-        <div id="view-suppliers" class="flex-1 w-full h-full bg-slate-50 hidden overflow-y-auto p-6 md:p-10 relative z-0">
-            <div class="max-w-5xl mx-auto space-y-6">
-                <!-- Header -->
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h1 class="text-2xl font-bold text-slate-800"><i class="fa-solid fa-truck-fast text-theme mr-2"></i>供應商列表</h1>
-                        <p class="text-sm text-slate-500 mt-1">集中管理供應商資訊與聯絡方式</p>
-                    </div>
-                    <button onclick="openSupplierModal()" class="px-5 py-2 bg-theme text-white text-sm font-bold rounded-lg shadow hover:bg-blue-500 transition"><i class="fa-solid fa-plus mr-1"></i> 新增供應商</button>
-                </div>
-
-                <!-- Supplier List Table -->
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                    <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <div class="relative w-64">
-                            <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-                            <input type="text" id="supplier-search" placeholder="搜尋供應商名稱或聯絡資訊..." oninput="renderSupplierList()" class="pl-8 pr-3 py-1.5 w-full text-xs border border-slate-200 rounded-lg bg-white focus:border-theme outline-none">
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm whitespace-nowrap">
-                            <thead class="bg-slate-50 text-slate-500 text-xs font-bold border-b border-slate-200">
-                                <tr>
-                                    <th class="px-4 py-3">供應商名稱</th>
-                                    <th class="px-4 py-3">聯絡資訊 / 地址</th>
-                                    <th class="px-4 py-3 w-24 text-center">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="supplier-table-body" class="divide-y divide-slate-100 text-slate-700 text-xs">
-                                <!-- Rows -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- VIEW 5: EMPLOYEES -->
-        <div id="view-employees" class="flex-1 w-full h-full bg-slate-50 hidden overflow-y-auto p-6 md:p-10 relative z-0">
-            <div class="max-w-5xl mx-auto space-y-6">
-                <!-- Header -->
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h1 class="text-2xl font-bold text-slate-800"><i class="fa-solid fa-id-badge text-theme mr-2"></i>員工列表</h1>
-                        <p class="text-sm text-slate-500 mt-1">集中管理員工資訊與單據負責人</p>
-                    </div>
-                    <button onclick="openEmployeeModal()" class="px-5 py-2 bg-theme text-white text-sm font-bold rounded-lg shadow hover:bg-blue-500 transition"><i class="fa-solid fa-plus mr-1"></i> 新增員工</button>
-                </div>
-
-                <!-- Employee List Table -->
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                    <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <div class="relative w-64">
-                            <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-                            <input type="text" id="employee-search" placeholder="搜尋員工名稱或電話..." oninput="renderEmployeeList()" class="pl-8 pr-3 py-1.5 w-full text-xs border border-slate-200 rounded-lg bg-white focus:border-theme outline-none">
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm whitespace-nowrap">
-                            <thead class="bg-slate-50 text-slate-500 text-xs font-bold border-b border-slate-200">
-                                <tr>
-                                    <th class="px-4 py-3">員工姓名</th>
-                                    <th class="px-4 py-3">電話號碼</th>
-                                    <th class="px-4 py-3">身分證號碼</th>
-                                    <th class="px-4 py-3">居住地址</th>
-                                    <th class="px-4 py-3 w-24 text-center">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="employee-table-body" class="divide-y divide-slate-100 text-slate-700 text-xs">
-                                <!-- Rows -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
+        </main>
     </div>
 
-    <!-- Settings Modal -->
-    <div id="modal-settings" class="fixed inset-0 modal-overlay hidden z-50 flex items-center justify-center">
-        <div class="bg-white w-[500px] rounded-xl shadow-2xl flex flex-col fade-in">
-            <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
-                <h2 class="text-base font-bold text-slate-800"><i class="fa-solid fa-building text-theme mr-2"></i>公司設置與 Logo</h2>
-                <button onclick="closeSettings()" class="text-slate-400 hover:text-red-500 text-lg transition"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="p-6 space-y-6">
-                <!-- Logo Upload -->
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-2">公司 Logo</label>
-                    <div class="flex items-center gap-4">
-                        <div class="w-24 h-24 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center relative overflow-hidden group bg-slate-50">
-                            <img id="set-img-logo" class="absolute inset-0 w-full h-full object-contain hidden" alt="Logo">
-                            <span id="set-txt-logo" class="text-xs text-slate-400 font-bold">無圖片</span>
-                            <div class="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center">
-                                <button onclick="clearImage('logo')" class="text-white text-xs hover:text-red-400"><i class="fa-solid fa-trash"></i></button>
-                            </div>
-                        </div>
-                        <div class="flex-1">
-                            <input type="file" accept="image/*" onchange="handleImageUpload(event, 'logo')" class="text-xs text-slate-500 w-full">
-                            <p class="text-[10px] text-slate-400 mt-1">建議使用透明背景的 PNG 圖片，長寬比約為 3:1 為佳。</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Stamp Upload -->
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-2">公司印章 / 簽名</label>
-                    <div class="flex items-center gap-4">
-                        <div class="w-24 h-24 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center relative overflow-hidden group bg-slate-50">
-                            <img id="set-img-stamp" class="absolute inset-0 w-full h-full object-contain hidden" alt="Stamp">
-                            <span id="set-txt-stamp" class="text-xs text-slate-400 font-bold">無圖片</span>
-                            <div class="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center">
-                                <button onclick="clearImage('stamp')" class="text-white text-xs hover:text-red-400"><i class="fa-solid fa-trash"></i></button>
-                            </div>
-                        </div>
-                        <div class="flex-1">
-                            <input type="file" accept="image/*" onchange="handleImageUpload(event, 'stamp')" class="text-xs text-slate-500 w-full">
-                            <p class="text-[10px] text-slate-400 mt-1">建議使用透明背景的 PNG 圖片（如公司圓章），將顯示在單據右下方。</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="p-4 border-t border-slate-100 flex justify-end bg-slate-50 rounded-b-xl">
-                <button onclick="closeSettings()" class="px-6 py-2 bg-theme text-white text-xs font-bold rounded hover:bg-blue-500 transition shadow">完成</button>
-            </div>
+    <!-- AUTH MODAL -->
+    <div id="auth-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+            <div class="text-center"><h2 class="text-xl font-bold">系统登录</h2><p class="text-xs text-slate-400">测试账号: admin | 密码: 123456</p></div>
+            <form id="auth-form" onsubmit="handleLocalAuthSubmit(event)" class="space-y-3">
+                <input type="text" id="auth-username" required placeholder="用户名" class="w-full text-xs border p-2.5 rounded-lg" value="admin">
+                <input type="password" id="auth-password" required placeholder="密码" class="w-full text-xs border p-2.5 rounded-lg" value="123456">
+                <button type="submit" class="w-full py-2.5 bg-blue-600 text-white font-medium rounded-lg">登 录</button>
+            </form>
         </div>
     </div>
 
-    <!-- Client Edit Modal -->
-    <div id="modal-client" class="fixed inset-0 modal-overlay hidden z-50 flex items-center justify-center">
-        <div class="bg-white w-[400px] rounded-xl shadow-2xl flex flex-col fade-in">
-            <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
-                <h2 class="text-base font-bold text-slate-800" id="client-modal-title">新增客戶</h2>
-                <button onclick="closeClientModal()" class="text-slate-400 hover:text-red-500 text-lg transition"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="p-6 space-y-4">
-                <input type="hidden" id="edit-client-id">
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">客戶名稱 <span class="text-red-500">*</span></label>
-                    <input type="text" id="edit-client-name" placeholder="輸入客戶公司名稱" class="w-full border border-slate-200 rounded p-2 text-sm focus:border-theme outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">聯絡資訊 / 地址</label>
-                    <textarea id="edit-client-contact" rows="4" placeholder="輸入地址、電話或聯絡人" class="w-full border border-slate-200 rounded p-2 text-sm focus:border-theme outline-none"></textarea>
-                </div>
-            </div>
-            <div class="p-4 border-t border-slate-100 flex justify-end bg-slate-50 rounded-b-xl gap-2">
-                <button onclick="closeClientModal()" class="px-4 py-2 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded hover:bg-slate-50 transition shadow-sm">取消</button>
-                <button onclick="saveClient()" class="px-6 py-2 bg-theme text-white text-xs font-bold rounded hover:bg-blue-500 transition shadow">保存客戶</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Supplier Edit Modal -->
-    <div id="modal-supplier" class="fixed inset-0 modal-overlay hidden z-50 flex items-center justify-center">
-        <div class="bg-white w-[400px] rounded-xl shadow-2xl flex flex-col fade-in">
-            <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
-                <h2 class="text-base font-bold text-slate-800" id="supplier-modal-title">新增供應商</h2>
-                <button onclick="closeSupplierModal()" class="text-slate-400 hover:text-red-500 text-lg transition"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="p-6 space-y-4">
-                <input type="hidden" id="edit-supplier-id">
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">供應商名稱 <span class="text-red-500">*</span></label>
-                    <input type="text" id="edit-supplier-name" placeholder="輸入供應商或外判名稱" class="w-full border border-slate-200 rounded p-2 text-sm focus:border-theme outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">聯絡資訊 / 備註</label>
-                    <textarea id="edit-supplier-contact" rows="4" placeholder="輸入聯絡人、電話、或收款帳戶..." class="w-full border border-slate-200 rounded p-2 text-sm focus:border-theme outline-none"></textarea>
-                </div>
-            </div>
-            <div class="p-4 border-t border-slate-100 flex justify-end bg-slate-50 rounded-b-xl gap-2">
-                <button onclick="closeSupplierModal()" class="px-4 py-2 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded hover:bg-slate-50 transition shadow-sm">取消</button>
-                <button onclick="saveSupplier()" class="px-6 py-2 bg-theme text-white text-xs font-bold rounded hover:bg-blue-500 transition shadow">保存供應商</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Employee Edit Modal -->
-    <div id="modal-employee" class="fixed inset-0 modal-overlay hidden z-50 flex items-center justify-center">
-        <div class="bg-white w-[400px] rounded-xl shadow-2xl flex flex-col fade-in">
-            <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
-                <h2 class="text-base font-bold text-slate-800" id="employee-modal-title">新增員工</h2>
-                <button onclick="closeEmployeeModal()" class="text-slate-400 hover:text-red-500 text-lg transition"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="p-6 space-y-4">
-                <input type="hidden" id="edit-employee-id">
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">員工姓名 <span class="text-red-500">*</span></label>
-                    <input type="text" id="edit-employee-name" placeholder="輸入員工姓名" class="w-full border border-slate-200 rounded p-2 text-sm focus:border-theme outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">電話號碼</label>
-                    <input type="text" id="edit-employee-phone" placeholder="輸入電話號碼" class="w-full border border-slate-200 rounded p-2 text-sm focus:border-theme outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">身分證號碼</label>
-                    <input type="text" id="edit-employee-idcard" placeholder="輸入身分證號碼 (例: 1234567(8))" class="w-full border border-slate-200 rounded p-2 text-sm focus:border-theme outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">居住地址</label>
-                    <textarea id="edit-employee-address" rows="3" placeholder="輸入居住地址" class="w-full border border-slate-200 rounded p-2 text-sm focus:border-theme outline-none"></textarea>
-                </div>
-            </div>
-            <div class="p-4 border-t border-slate-100 flex justify-end bg-slate-50 rounded-b-xl gap-2">
-                <button onclick="closeEmployeeModal()" class="px-4 py-2 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded hover:bg-slate-50 transition shadow-sm">取消</button>
-                <button onclick="saveEmployee()" class="px-6 py-2 bg-theme text-white text-xs font-bold rounded hover:bg-blue-500 transition shadow">保存員工</button>
-            </div>
-        </div>
+    <!-- Toast Component -->
+    <div id="toast-box" class="fixed bottom-5 right-5 z-50 transition-all transform translate-y-10 opacity-0 pointer-events-none">
+        <div id="toast-content" class="px-4 py-2.5 rounded-lg shadow-xl text-xs text-white bg-slate-800"><span id="toast-text"></span></div>
     </div>
 
     <script>
-        // Data Store
-        let projects = JSON.parse(localStorage.getItem('nest_projects')) || [];
-        let settings = JSON.parse(localStorage.getItem('nest_settings')) || { logo: null, stamp: null };
-        let clients = JSON.parse(localStorage.getItem('nest_clients')) || [];
-        let suppliers = JSON.parse(localStorage.getItem('nest_suppliers')) || [];
-        let employees = JSON.parse(localStorage.getItem('nest_employees')) || [];
-        let activeProjectId = null;
-        
-        // Dictionary for Language Switching
-        const i18n = {
-            'zh-HK': {
-                docNames: { quote: '報價單', invoice: '發票', receipt: '收據' },
-                lblBillTo: '客戶資訊',
-                lblDate: '日期', lblDNo: '單據編號', lblValid: '報價有效日期',
-                lblDesc: '項目', lblQty: '數量', lblPrice: '單價', lblAmt: '金額',
-                lblTotal: '總額', lblTerms: '條款與備註', lblAccepted: '確認及接受',
-                lblBehalf: '謹代表', lblAuth: '授權簽名及公司蓋章', lblClientAuth: '客戶簽名及公司蓋章',
-                defTermsQuote: "1. 報價有效期為 3 個月。\n2. 確認後需先支付 50% 訂金，尾款於項目完成後付清。",
-                defTermsInvoice: "付款方式 Payment Method:\n1. 支票 (Cheque)\n     抬頭請寫 ‘來思製作一人有限公司’ 或 ‘NEST PRODUCTION LIMITED COMPANY’\n2. 銀行轉帳 (Bank Transfer)\n     中國銀行澳門分行 (BOC Macau) MOP 帳戶: 185000130634572",
-                defTermsReceipt: "款項已收齊，感謝！"
-            },
-            'en': {
-                docNames: { quote: 'QUOTATION', invoice: 'INVOICE', receipt: 'RECEIPT' },
-                lblBillTo: 'BILL TO',
-                lblDate: 'Date', lblDNo: 'Doc Number', lblValid: 'Valid Until',
-                lblDesc: 'ITEM(S)', lblQty: 'Qty', lblPrice: 'Unit Price', lblAmt: 'Amount',
-                lblTotal: 'TOTAL AMOUNT', lblTerms: 'Terms & Conditions', lblAccepted: 'Acknowledge & accepted by',
-                lblBehalf: 'For and on behalf of', lblAuth: 'Authorized Signature & Company Stamp', lblClientAuth: 'Client Signature & Company Stamp',
-                defTermsQuote: "1. Quotation valid for 3 months.\n2. 50% deposit required upon confirmation, balance upon completion.",
-                defTermsInvoice: "Payment Method:\n1. Cheque\n     Payable to ‘來思製作一人有限公司’ or ‘NEST PRODUCTION LIMITED COMPANY’\n2. Bank Transfer\n     Bank of China Macau (BOC) MOP Account: 185000130634572",
-                defTermsReceipt: "Payment is well received. Thank you!"
-            }
-        };
+        // ==========================================
+        // 🚀 FIREBASE 云端同步配置区 (请在此处贴上金钥)
+        // ==========================================
+        const firebaseConfig = {
+  apiKey: "AIzaSyAQd6Mz7_wMyOqgCRva0jcqlWHwljy4nSY",
+  authDomain: "nestprosystem.firebaseapp.com",
+  projectId: "nestprosystem",
+  storageBucket: "nestprosystem.firebasestorage.app",
+  messagingSenderId: "173379181940",
+  appId: "1:173379181940:web:3cb0240903eefc6acfe021",
+  measurementId: "G-9S53ZR1TBH"
+};
 
-        // Catch Unhandled Promise Rejections (for html2pdf warnings)
-        window.addEventListener("unhandledrejection", function(promiseRejectionEvent) {
-            console.warn("Caught unhandled rejection (likely html2canvas image warning):", promiseRejectionEvent.reason);
-            promiseRejectionEvent.preventDefault();
+        // --- 云端同步引擎逻辑 ---
+        let useCloud = false;
+        let db, auth, cloudUserId;
+        let cloudDebounceTimer;
+
+        window.addEventListener('firebase-loaded', async () => {
+            if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+                console.log("⚠️ 尚未设定 Firebase 金钥，保持单机离线模式。");
+                return;
+            }
+            try {
+                const { initializeApp, getAuth, signInAnonymously, getFirestore } = window.FirebaseModule;
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                await signInAnonymously(auth);
+                if (!auth.currentUser) return;
+                cloudUserId = auth.currentUser.uid;
+                useCloud = true;
+                
+                document.getElementById('cloud-status-indicator').classList.replace('bg-slate-300', 'bg-emerald-400');
+                document.getElementById('cloud-status-text').textContent = '云端已连线';
+                console.log("☁️ 成功连接 Firebase 云端数据库！");
+                
+                startCloudSync();
+            } catch(err) {
+                console.error("Firebase 连线失败:", err);
+            }
         });
 
-        // Initialize App
-        window.onload = () => {
-            renderProjectList();
-            if(projects.length > 0) selectProject(projects[0].id);
-            updateSettingsUI();
-            updateDashboard();
+        function startCloudSync() {
+            const { onSnapshot, doc } = window.FirebaseModule;
+            const userRef = doc(db, 'invoice_app_users', cloudUserId);
+
+            onSnapshot(userRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    // 仅当是其他设备修改时才强制覆写本地画面
+                    if (!docSnap.metadata.hasPendingWrites) {
+                        if (data.projects) projectsList = data.projects;
+                        if (data.settings) companySettings = data.settings;
+                        
+                        localStorage.setItem('sys_projects_list', JSON.stringify(projectsList));
+                        localStorage.setItem('sys_company_settings', JSON.stringify(companySettings));
+                        
+                        syncCompanySettingsUI();
+                        renderProjectsSidebar();
+                        if (activeProjectId) {
+                            activeProject = projectsList.find(p => p.id === activeProjectId);
+                            renderActiveProjectToForm();
+                        }
+                    }
+                } else {
+                    // 云端没资料但本机有，自动将本机资料上传
+                    syncToCloud();
+                }
+            });
+        }
+
+        function syncToCloud() {
+            if (!useCloud || !cloudUserId) return;
+            clearTimeout(cloudDebounceTimer);
+            cloudDebounceTimer = setTimeout(async () => {
+                try {
+                    const { setDoc, doc } = window.FirebaseModule;
+                    await setDoc(doc(db, 'invoice_app_users', cloudUserId), {
+                        projects: projectsList,
+                        settings: companySettings,
+                        updatedAt: Date.now()
+                    });
+                } catch (err) {
+                    console.error("云端上传失败:", err);
+                }
+            }, 800); // 延时 0.8秒上传，防止打字太快耗损资料库额度
+        }
+        // ==========================================
+
+        const CURRENCY_SYMBOLS = { CNY: '¥', MOP: 'MOP$', HKD: 'HK$' };
+        let currentUser = null; let activeProjectId = null; let activeProject = null;
+        let currentDocType = 'QUOTATION';
+        let companySettings = {}; let projectsList = [];
+
+        window.onload = function() {
+            initLocalStorageData();
+            if (localStorage.getItem('sys_current_session')) {
+                currentUser = localStorage.getItem('sys_current_session');
+                loginSuccess();
+            }
         };
 
-        // Utility: Save
-        function saveData() {
-            localStorage.setItem('nest_projects', JSON.stringify(projects));
-            localStorage.setItem('nest_settings', JSON.stringify(settings));
-            localStorage.setItem('nest_clients', JSON.stringify(clients));
-            localStorage.setItem('nest_suppliers', JSON.stringify(suppliers));
-            localStorage.setItem('nest_employees', JSON.stringify(employees));
+        function initLocalStorageData() {
+            const savedSettings = localStorage.getItem('sys_company_settings');
+            if (savedSettings) companySettings = JSON.parse(savedSettings);
+            const savedProjects = localStorage.getItem('sys_projects_list');
+            if (savedProjects) projectsList = JSON.parse(savedProjects);
         }
 
-        // Generate NST Doc No
-        function generateDocNo() {
-            const today = new Date();
-            const dateStr = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
-            
-            // Find today's max sequence
-            let maxSeq = 0;
-            const prefix = `NST${dateStr}`;
-            projects.forEach(p => {
-                if(p.docNo && p.docNo.startsWith(prefix)) {
-                    const seq = parseInt(p.docNo.substring(prefix.length), 10);
-                    if(seq > maxSeq) maxSeq = seq;
-                }
-            });
-            return `${prefix}${String(maxSeq + 1).padStart(2, '0')}`;
+        function handleLocalAuthSubmit(e) {
+            e.preventDefault();
+            const u = document.getElementById('auth-username').value;
+            localStorage.setItem('sys_current_session', u);
+            currentUser = u;
+            loginSuccess();
+            showToast("登录成功！", "success");
         }
 
-        // Generate Default Dates
-        function getTodayStr() {
-            return new Date().toISOString().split('T')[0];
-        }
-        function getThreeMonthsLaterStr() {
-            const d = new Date();
-            d.setMonth(d.getMonth() + 3);
-            return d.toISOString().split('T')[0];
-        }
-
-        // UI Controls
-        function toggleSidebar() {
-            const sb = document.getElementById('sidebar');
-            sb.classList.toggle('w-0');
-            sb.classList.toggle('w-64');
-            sb.classList.toggle('overflow-hidden');
-            setTimeout(renderPreview, 300); // Wait for transition
-        }
-        function toggleUserMenu() { document.getElementById('user-menu').classList.toggle('hidden'); }
-        function openSettings() { document.getElementById('modal-settings').classList.remove('hidden'); }
-        function closeSettings() { document.getElementById('modal-settings').classList.add('hidden'); renderPreview(); }
-        
-        function switchMainView(view) {
-            ['workspace', 'dashboard', 'clients', 'suppliers', 'employees'].forEach(v => {
-                const el = document.getElementById(`view-${v}`);
-                if (el) el.classList.add('hidden');
-                
-                const nav = document.getElementById(`nav-${v}`);
-                if (nav) nav.className = 'px-4 py-1.5 rounded-md text-xs font-bold text-slate-500 hover:text-slate-700 transition';
-            });
-            
-            const targetView = document.getElementById(`view-${view}`);
-            if (targetView) targetView.classList.remove('hidden');
-            
-            const targetNav = document.getElementById(`nav-${view}`);
-            if (targetNav) targetNav.className = 'px-4 py-1.5 rounded-md text-xs font-bold bg-white text-theme shadow-sm transition';
-            
-            if(view === 'workspace') renderPreview();
-            else if(view === 'dashboard') updateDashboard();
-            else if(view === 'clients') renderClientList();
-            else if(view === 'suppliers') renderSupplierList();
-            else if(view === 'employees') renderEmployeeList();
+        function loginSuccess() {
+            document.getElementById('auth-modal').classList.add('hidden');
+            document.getElementById('app-container').classList.remove('hidden');
+            document.getElementById('header-user-status').classList.remove('hidden');
+            document.getElementById('user-display-name').textContent = currentUser;
+            syncCompanySettingsUI();
+            renderProjectsSidebar();
+            if (projectsList.length > 0) selectProject(projectsList[0].id);
+            else document.getElementById('empty-state-view').classList.remove('hidden');
         }
 
-        function goToProject(id) {
-            switchMainView('workspace');
-            selectProject(id);
+        function handleLogout() {
+            localStorage.removeItem('sys_current_session');
+            location.reload();
         }
 
-        // Project Management
-        function createNewProject() {
-            const lang = 'zh-HK';
-            const newProj = {
-                id: Date.now().toString(),
-                docNo: generateDocNo(),
-                docType: 'quote',
-                lang: lang,
-                projName: '', custName: '', custContact: '',
-                status: 'draft',
-                employeeId: '',
-                issueDate: getTodayStr(),
-                dueDate: getThreeMonthsLaterStr(),
-                items: [{ desc: '', qty: 1, price: 0, isPageBreak: false }],
-                costs: [],
-                terms: i18n[lang].defTermsQuote,
-                termsEdited: false,
-                termsBreak: false,
-                extraPages: []
-            };
-            projects.unshift(newProj);
-            saveData();
-            renderProjectList();
-            selectProject(newProj.id);
-        }
-
-        function deleteCurrentProject() {
-            if(confirm('確定要刪除此項目嗎？')) {
-                projects = projects.filter(p => p.id !== activeProjectId);
-                activeProjectId = null;
-                saveData();
-                renderProjectList();
-                
-                document.getElementById('editor-panel').classList.add('hidden');
-                document.getElementById('preview-toolbar').classList.add('hidden');
-                document.getElementById('preview-scroll-area').classList.add('hidden');
-                document.getElementById('empty-state').classList.remove('hidden');
-                updateDashboard();
-            }
-        }
-
-        function getActive() { return projects.find(p => p.id === activeProjectId); }
-
-        function selectProject(id) {
-            activeProjectId = id;
-            document.getElementById('editor-panel').classList.remove('hidden');
-            document.getElementById('preview-toolbar').classList.remove('hidden');
-            document.getElementById('preview-scroll-area').classList.remove('hidden');
-            document.getElementById('empty-state').classList.add('hidden');
-            
-            renderProjectList();
-            loadEditor();
-        }
-
-        function renderProjectList() {
-            const list = document.getElementById('project-list');
-            const search = document.getElementById('project-search').value.toLowerCase();
-            list.innerHTML = '';
-            
-            const statusColors = { 
-                draft: 'bg-slate-100 text-slate-500', 
-                quoted: 'bg-blue-100 text-blue-600', 
-                in_progress: 'bg-amber-100 text-amber-600', 
-                pending_payment: 'bg-rose-100 text-rose-600',
-                completed: 'bg-emerald-100 text-emerald-600',
-                sent: 'bg-blue-100 text-blue-600', 
-                paid: 'bg-emerald-100 text-emerald-600', 
-                cancelled: 'bg-red-100 text-red-500' 
-            };
-            const statusNames = { 
-                draft: '草稿', quoted: '已報價', in_progress: '進行中', pending_payment: '待收款', completed: '已完成',
-                sent: '已發送', paid: '已付款', cancelled: '已取消'
-            };
-            const typeIcons = { quote:'📝', invoice:'🧾', receipt:'💰' };
-            
-            projects.forEach(p => {
-                if(search && !p.projName.toLowerCase().includes(search) && !p.custName.toLowerCase().includes(search) && !p.docNo.toLowerCase().includes(search)) return;
-                
-                const d = document.createElement('div');
-                const isAct = p.id === activeProjectId;
-                d.className = `p-3 rounded-lg border cursor-pointer transition ${isAct ? 'border-theme bg-theme-light' : 'border-transparent hover:bg-slate-50 border-b-slate-100'}`;
-                d.onclick = () => selectProject(p.id);
-                
-                d.innerHTML = `
-                    <div class="flex justify-between items-start mb-1">
-                        <div class="font-bold text-xs text-slate-800 truncate pr-2 w-36">${p.projName || '未命名項目'}</div>
-                        <div class="text-[10px] px-1.5 py-0.5 rounded font-bold ${statusColors[p.status] || statusColors.draft}">${statusNames[p.status] || '草稿'}</div>
-                    </div>
-                    <div class="text-[10px] text-slate-500 truncate">${p.custName || '無客戶名稱'}</div>
-                    <div class="flex justify-between items-center mt-2 text-[10px] font-bold text-slate-400">
-                        <span>${typeIcons[p.docType]} ${p.docNo}</span>
-                        <span>${p.issueDate}</span>
-                    </div>
-                `;
-                list.appendChild(d);
-            });
-        }
-
-        function loadEditor() {
-            const p = getActive();
-            if(!p) return;
-
-            // Basic Info
-            document.getElementById('inp-doc-lang').value = p.lang || 'zh-HK';
-            document.getElementById('inp-proj-name').value = p.projName;
-            document.getElementById('inp-cust-name').value = p.custName;
-            document.getElementById('inp-cust-contact').value = p.custContact;
-            document.getElementById('inp-status').value = p.status;
-            
-            // Populate Employee dropdown
-            const empSelect = document.getElementById('inp-employee');
-            empSelect.innerHTML = '<option value="">-- 無 --</option>';
-            employees.forEach(e => {
-                const opt = document.createElement('option');
-                opt.value = e.id;
-                opt.innerText = e.name;
-                empSelect.appendChild(opt);
-            });
-            empSelect.value = p.employeeId || '';
-
-            document.getElementById('inp-date').value = p.issueDate;
-            
-            // Due date visibility & logic
-            const dueCon = document.getElementById('editor-due-container');
-            if (p.docType === 'quote') {
-                dueCon.style.display = 'block';
-                document.getElementById('inp-due').value = p.dueDate || getThreeMonthsLaterStr();
-            } else {
-                dueCon.style.display = 'none';
-            }
-
-            document.getElementById('inp-terms').value = p.terms;
-            document.getElementById('inp-terms-break').checked = !!p.termsBreak;
-
-            updateDocTypeUI(p.docType);
-            renderItemsEditor();
-            renderCostsEditor();
-            renderExtraPagesEditor();
-            renderPreview();
-        }
-
-        // --- Client List & CRM Logic ---
-        function renderClientList() {
-            const tbody = document.getElementById('client-table-body');
-            const search = document.getElementById('client-search').value.toLowerCase();
-            if(!tbody) return;
-            tbody.innerHTML = '';
-            
-            const filtered = clients.filter(c => 
-                !search || c.name.toLowerCase().includes(search) || (c.contact && c.contact.toLowerCase().includes(search))
-            );
-
-            if(filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="3" class="px-4 py-8 text-center text-slate-400">尚未建立任何客戶，或找不到符合的結果。</td></tr>`;
-                return;
-            }
-
-            filtered.forEach(c => {
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50 transition';
-                tr.innerHTML = `
-                    <td class="px-4 py-3 font-bold text-slate-800">${c.name}</td>
-                    <td class="px-4 py-3 text-slate-500 whitespace-pre-wrap">${c.contact || '-'}</td>
-                    <td class="px-4 py-3 text-center">
-                        <button onclick="openClientModal('${c.id}')" class="text-blue-500 hover:bg-blue-50 px-2 py-1 rounded transition" title="編輯"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="deleteClient('${c.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition ml-1" title="刪除"><i class="fa-solid fa-trash"></i></button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        function openClientModal(id = null) {
-            const modal = document.getElementById('modal-client');
-            const t = document.getElementById('client-modal-title');
-            if(id) {
-                const c = clients.find(x => x.id === id);
-                document.getElementById('edit-client-id').value = c.id;
-                document.getElementById('edit-client-name').value = c.name;
-                document.getElementById('edit-client-contact').value = c.contact;
-                t.innerText = '編輯客戶';
-            } else {
-                document.getElementById('edit-client-id').value = '';
-                document.getElementById('edit-client-name').value = '';
-                document.getElementById('edit-client-contact').value = '';
-                t.innerText = '新增客戶';
-            }
-            modal.classList.remove('hidden');
-        }
-
-        function closeClientModal() { document.getElementById('modal-client').classList.add('hidden'); }
-
-        function saveClient() {
-            const id = document.getElementById('edit-client-id').value;
-            const name = document.getElementById('edit-client-name').value.trim();
-            const contact = document.getElementById('edit-client-contact').value.trim();
-            
-            if(!name) { alert('請填寫客戶名稱'); return; }
-
-            if(id) {
-                const idx = clients.findIndex(x => x.id === id);
-                if(idx > -1) { clients[idx].name = name; clients[idx].contact = contact; }
-            } else {
-                clients.push({ id: Date.now().toString(), name, contact });
-            }
-            
-            saveData();
-            closeClientModal();
-            renderClientList();
-        }
-
-        function deleteClient(id) {
-            if(confirm('確定要刪除此客戶嗎？這不會影響已建立的單據。')) {
-                clients = clients.filter(c => c.id !== id);
-                saveData();
-                renderClientList();
-            }
-        }
-
-        // Workspace: Client Autocomplete
-        function showClientAutocomplete(keyword) {
-            const dropdown = document.getElementById('client-autocomplete');
-            dropdown.innerHTML = '';
-            if(!keyword.trim()) { dropdown.classList.add('hidden'); return; }
-            
-            const matched = clients.filter(c => c.name.toLowerCase().includes(keyword.toLowerCase()));
-            if(matched.length === 0) { dropdown.classList.add('hidden'); return; }
-
-            matched.forEach(c => {
-                const div = document.createElement('div');
-                div.className = 'px-3 py-2 border-b border-slate-100 hover:bg-theme-light cursor-pointer text-xs transition';
-                div.innerHTML = `<div class="font-bold text-slate-800">${c.name}</div><div class="text-[10px] text-slate-500 truncate mt-0.5">${c.contact || '無聯絡資訊'}</div>`;
-                div.onclick = () => {
-                    document.getElementById('inp-cust-name').value = c.name;
-                    document.getElementById('inp-cust-contact').value = c.contact;
-                    dropdown.classList.add('hidden');
-                    syncInputToProject();
-                };
-                dropdown.appendChild(div);
-            });
-            dropdown.classList.remove('hidden');
-        }
-
-        function hideClientAutocomplete() { document.getElementById('client-autocomplete').classList.add('hidden'); }
-
-        function saveCurrentToClientList() {
-            const name = document.getElementById('inp-cust-name').value.trim();
-            const contact = document.getElementById('inp-cust-contact').value.trim();
-            if(!name) { alert('請先輸入客戶名稱！'); return; }
-            
-            const exists = clients.find(c => c.name.toLowerCase() === name.toLowerCase());
-            if(exists) {
-                exists.contact = contact; // Update contact if exists
-                alert('已為您更新該客戶的聯絡資訊！');
-            } else {
-                clients.push({ id: Date.now().toString(), name, contact });
-                alert('已成功加入客戶列表！');
-            }
-            saveData();
-        }
-
-        function syncInputToProject() {
-            const p = getActive();
-            if(!p) return;
-            
-            p.lang = document.getElementById('inp-doc-lang').value;
-            p.projName = document.getElementById('inp-proj-name').value;
-            p.custName = document.getElementById('inp-cust-name').value;
-            p.custContact = document.getElementById('inp-cust-contact').value;
-            p.status = document.getElementById('inp-status').value;
-            p.employeeId = document.getElementById('inp-employee').value;
-            p.issueDate = document.getElementById('inp-date').value;
-            
-            if(p.docType === 'quote') {
-                p.dueDate = document.getElementById('inp-due').value;
-            }
-
-            const newTerms = document.getElementById('inp-terms').value;
-            if(p.terms !== newTerms) { p.terms = newTerms; p.termsEdited = true; }
-            
-            p.termsBreak = document.getElementById('inp-terms-break').checked;
-
-            // Language switch might change default terms if not edited
-            if(!p.termsEdited) {
-                if(p.docType === 'quote') p.terms = i18n[p.lang].defTermsQuote;
-                else if(p.docType === 'invoice') p.terms = i18n[p.lang].defTermsInvoice;
-                else p.terms = i18n[p.lang].defTermsReceipt;
-                document.getElementById('inp-terms').value = p.terms;
-            }
-
-            saveData();
-            renderProjectList();
-            renderPreview();
-            updateDashboard();
-        }
-
-        function updateDocType(type) {
-            const p = getActive();
-            if(!p) return;
-            p.docType = type;
-            
-            // Smart terms switch
-            if(!p.termsEdited) {
-                if(type === 'quote') p.terms = i18n[p.lang].defTermsQuote;
-                else if(type === 'invoice') p.terms = i18n[p.lang].defTermsInvoice;
-                else p.terms = i18n[p.lang].defTermsReceipt;
-            }
-
-            saveData();
-            loadEditor();
-        }
-
-        function updateDocTypeUI(type) {
-            const btns = ['quote', 'invoice', 'receipt'];
-            btns.forEach(b => {
-                const el = document.getElementById(`btn-type-${b}`);
-                if(b === type) el.className = 'flex-1 py-2 rounded-md transition text-white shadow bg-theme';
-                else el.className = 'flex-1 py-2 rounded-md transition text-slate-500 hover:bg-slate-50 bg-transparent';
-            });
-        }
-
-        function renderItemsEditor() {
-            const p = getActive();
-            const con = document.getElementById('items-container');
-            con.innerHTML = '';
-            
-            p.items.forEach((item, idx) => {
-                const d = document.createElement('div');
-                if (item.isPageBreak) {
-                    d.className = 'bg-slate-100 p-2 rounded-lg border border-dashed border-slate-300 flex justify-between items-center text-slate-500 text-xs font-bold';
-                    d.innerHTML = `<span><i class="fa-solid fa-scissors mr-2"></i> --- 匯出 PDF 將在此處換頁 ---</span>
-                        <button onclick="removeItem(${idx})" class="text-slate-400 hover:text-red-500 px-1"><i class="fa-solid fa-trash"></i></button>`;
-                } else {
-                    d.className = 'bg-slate-50 p-3 rounded-lg border border-slate-200 relative group flex flex-col gap-2';
-                    d.innerHTML = `
-                        <div class="flex gap-2">
-                            <textarea rows="1" oninput="updateItem(${idx}, 'desc', this.value)" placeholder="項目說明..." class="flex-1 border border-slate-200 rounded p-1.5 text-xs focus:border-theme outline-none resize-y">${item.desc}</textarea>
-                            <button onclick="removeItem(${idx})" class="text-slate-300 hover:text-red-500 px-1 absolute top-2 right-2"><i class="fa-solid fa-trash"></i></button>
-                        </div>
-                        <div class="flex gap-2">
-                            <div class="flex-1 flex items-center bg-white border border-slate-200 rounded px-2">
-                                <span class="text-[10px] text-slate-400 w-8">數量</span>
-                                <input type="number" oninput="updateItem(${idx}, 'qty', this.value)" value="${item.qty}" class="w-full p-1 text-xs outline-none bg-transparent">
-                            </div>
-                            <div class="flex-1 flex items-center bg-white border border-slate-200 rounded px-2">
-                                <span class="text-[10px] text-slate-400 w-8">單價</span>
-                                <input type="number" oninput="updateItem(${idx}, 'price', this.value)" value="${item.price}" class="w-full p-1 text-xs outline-none bg-transparent">
-                            </div>
-                        </div>
-                    `;
-                }
-                con.appendChild(d);
-            });
-        }
-
-        function addItem() {
-            getActive().items.push({ desc: '', qty: 1, price: 0, isPageBreak: false });
-            saveData(); renderItemsEditor(); renderPreview();
-        }
-
-        function addPageBreak() {
-            getActive().items.push({ isPageBreak: true });
-            saveData(); renderItemsEditor(); renderPreview();
-        }
-
-        function updateItem(idx, field, val) {
-            getActive().items[idx][field] = field === 'desc' ? val : parseFloat(val) || 0;
-            saveData(); renderPreview(); updateDashboard();
-        }
-
-        function removeItem(idx) {
-            getActive().items.splice(idx, 1);
-            saveData(); renderItemsEditor(); renderPreview(); updateDashboard();
-        }
-
-        // --- Costs Logic ---
-        function renderCostsEditor() {
-            const p = getActive();
-            const con = document.getElementById('costs-container');
-            if(!con) return;
-            con.innerHTML = '';
-            
-            if(!p.costs) p.costs = [];
-            
-            p.costs.forEach((cost, idx) => {
-                const d = document.createElement('div');
-                d.className = 'bg-rose-50/50 p-3 rounded-lg border border-rose-100 relative space-y-2';
-                d.innerHTML = `
-                    <div class="flex justify-between items-center border-b border-rose-100 pb-1 mb-1">
-                        <span class="text-[10px] font-bold text-rose-500">成本項目 ${idx + 1}</span>
-                        <div class="flex gap-2 items-center">
-                            <button onclick="saveCostToSupplierList(${idx})" class="text-[10px] text-rose-500 font-bold hover:underline" title="將此供應商加入列表">加入供應商庫</button>
-                            <button onclick="removeCost(${idx})" class="text-slate-400 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>
-                        </div>
-                    </div>
-                    <div class="flex gap-2">
-                        <div class="relative flex-1">
-                            <input type="text" oninput="updateCost(${idx}, 'supplier', this.value); showSupplierAutocomplete(${idx}, this.value)" onfocus="showSupplierAutocomplete(${idx}, this.value)" onblur="setTimeout(() => hideSupplierAutocomplete(${idx}), 200)" value="${cost.supplier || ''}" autocomplete="off" placeholder="供應商 (搜尋/新增)" class="w-full border border-slate-200 rounded p-1.5 text-xs focus:border-rose-400 outline-none font-bold text-slate-700">
-                            <div id="supp-auto-${idx}" class="hidden absolute w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-32 overflow-y-auto z-50"></div>
-                        </div>
-                        <input type="text" oninput="updateCost(${idx}, 'desc', this.value)" value="${cost.desc || ''}" placeholder="成本說明" class="flex-1 border border-slate-200 rounded p-1.5 text-xs focus:border-rose-400 outline-none">
-                        <input type="number" oninput="updateCost(${idx}, 'amount', this.value)" value="${cost.amount || 0}" placeholder="金額" class="w-20 border border-slate-200 rounded p-1.5 text-xs focus:border-rose-400 outline-none text-right">
-                    </div>
-                `;
-                con.appendChild(d);
-            });
-        }
-
-        function addCost() {
-            const p = getActive();
-            if(!p.costs) p.costs = [];
-            p.costs.push({ desc: '', supplier: '', amount: 0 });
-            saveData(); renderCostsEditor(); updateDashboard();
-        }
-
-        function updateCost(idx, field, val) {
-            getActive().costs[idx][field] = field === 'amount' ? parseFloat(val) || 0 : val;
-            saveData(); 
-            if(field === 'amount') updateDashboard();
-        }
-
-        function removeCost(idx) {
-            getActive().costs.splice(idx, 1);
-            saveData(); renderCostsEditor(); updateDashboard();
-        }
-
-        function showSupplierAutocomplete(idx, keyword) {
-            const dropdown = document.getElementById(`supp-auto-${idx}`);
-            dropdown.innerHTML = '';
-            if(!keyword.trim()) { dropdown.classList.add('hidden'); return; }
-            
-            const matched = suppliers.filter(s => s.name.toLowerCase().includes(keyword.toLowerCase()));
-            if(matched.length === 0) { dropdown.classList.add('hidden'); return; }
-
-            matched.forEach(s => {
-                const div = document.createElement('div');
-                div.className = 'px-3 py-2 border-b border-slate-100 hover:bg-rose-50 cursor-pointer text-xs transition';
-                div.innerHTML = `<div class="font-bold text-slate-800">${s.name}</div>`;
-                div.onclick = () => {
-                    updateCost(idx, 'supplier', s.name);
-                    renderCostsEditor(); 
-                };
-                dropdown.appendChild(div);
-            });
-            dropdown.classList.remove('hidden');
-        }
-
-        function hideSupplierAutocomplete(idx) { 
-            const el = document.getElementById(`supp-auto-${idx}`);
-            if(el) el.classList.add('hidden'); 
-        }
-
-        function saveCostToSupplierList(idx) {
-            const p = getActive();
-            const suppName = (p.costs[idx].supplier || '').trim();
-            if(!suppName) { alert('請先輸入供應商名稱！'); return; }
-            
-            const exists = suppliers.find(s => s.name.toLowerCase() === suppName.toLowerCase());
-            if(exists) {
-                alert('此供應商已存在於列表中！');
-            } else {
-                suppliers.push({ id: Date.now().toString(), name: suppName, contact: '' });
-                alert('已成功加入供應商列表！');
-                saveData();
-                renderSupplierList();
-            }
-        }
-
-        // --- Supplier List CRUD ---
-        function renderSupplierList() {
-            const tbody = document.getElementById('supplier-table-body');
-            const search = document.getElementById('supplier-search')?.value.toLowerCase() || '';
-            if(!tbody) return;
-            tbody.innerHTML = '';
-            
-            const filtered = suppliers.filter(s => 
-                !search || s.name.toLowerCase().includes(search) || (s.contact && s.contact.toLowerCase().includes(search))
-            );
-
-            if(filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="3" class="px-4 py-8 text-center text-slate-400">尚未建立任何供應商，或找不到符合的結果。</td></tr>`;
-                return;
-            }
-
-            filtered.forEach(s => {
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50 transition';
-                tr.innerHTML = `
-                    <td class="px-4 py-3 font-bold text-slate-800">${s.name}</td>
-                    <td class="px-4 py-3 text-slate-500 whitespace-pre-wrap">${s.contact || '-'}</td>
-                    <td class="px-4 py-3 text-center">
-                        <button onclick="openSupplierModal('${s.id}')" class="text-blue-500 hover:bg-blue-50 px-2 py-1 rounded transition" title="編輯"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="deleteSupplier('${s.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition ml-1" title="刪除"><i class="fa-solid fa-trash"></i></button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        function openSupplierModal(id = null) {
-            const modal = document.getElementById('modal-supplier');
-            const t = document.getElementById('supplier-modal-title');
-            if(id) {
-                const s = suppliers.find(x => x.id === id);
-                document.getElementById('edit-supplier-id').value = s.id;
-                document.getElementById('edit-supplier-name').value = s.name;
-                document.getElementById('edit-supplier-contact').value = s.contact;
-                t.innerText = '編輯供應商';
-            } else {
-                document.getElementById('edit-supplier-id').value = '';
-                document.getElementById('edit-supplier-name').value = '';
-                document.getElementById('edit-supplier-contact').value = '';
-                t.innerText = '新增供應商';
-            }
-            modal.classList.remove('hidden');
-        }
-
-        function closeSupplierModal() { document.getElementById('modal-supplier').classList.add('hidden'); }
-
-        function saveSupplier() {
-            const id = document.getElementById('edit-supplier-id').value;
-            const name = document.getElementById('edit-supplier-name').value.trim();
-            const contact = document.getElementById('edit-supplier-contact').value.trim();
-            
-            if(!name) { alert('請填寫供應商名稱'); return; }
-
-            if(id) {
-                const idx = suppliers.findIndex(x => x.id === id);
-                if(idx > -1) { suppliers[idx].name = name; suppliers[idx].contact = contact; }
-            } else {
-                suppliers.push({ id: Date.now().toString(), name, contact });
-            }
-            
-            saveData();
-            closeSupplierModal();
-            renderSupplierList();
-        }
-
-        function deleteSupplier(id) {
-            if(confirm('確定要刪除此供應商嗎？這不會影響已建立的單據成本。')) {
-                suppliers = suppliers.filter(s => s.id !== id);
-                saveData();
-                renderSupplierList();
-            }
-        }
-
-        // --- Employee List CRUD ---
-        function renderEmployeeList() {
-            const tbody = document.getElementById('employee-table-body');
-            const search = document.getElementById('employee-search')?.value.toLowerCase() || '';
-            if(!tbody) return;
-            tbody.innerHTML = '';
-            
-            const filtered = employees.filter(e => 
-                !search || e.name.toLowerCase().includes(search) || (e.phone && e.phone.toLowerCase().includes(search))
-            );
-
-            if(filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400">尚未建立任何員工，或找不到符合的結果。</td></tr>`;
-                return;
-            }
-
-            filtered.forEach(e => {
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50 transition';
-                tr.innerHTML = `
-                    <td class="px-4 py-3 font-bold text-slate-800">${e.name}</td>
-                    <td class="px-4 py-3 text-slate-600">${e.phone || '-'}</td>
-                    <td class="px-4 py-3 text-slate-600">${e.idcard || '-'}</td>
-                    <td class="px-4 py-3 text-slate-500 max-w-[200px] truncate" title="${e.address || ''}">${e.address || '-'}</td>
-                    <td class="px-4 py-3 text-center">
-                        <button onclick="openEmployeeModal('${e.id}')" class="text-blue-500 hover:bg-blue-50 px-2 py-1 rounded transition" title="編輯"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="deleteEmployee('${e.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition ml-1" title="刪除"><i class="fa-solid fa-trash"></i></button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        function openEmployeeModal(id = null) {
-            const modal = document.getElementById('modal-employee');
-            const t = document.getElementById('employee-modal-title');
-            if(id) {
-                const e = employees.find(x => x.id === id);
-                document.getElementById('edit-employee-id').value = e.id;
-                document.getElementById('edit-employee-name').value = e.name;
-                document.getElementById('edit-employee-phone').value = e.phone || '';
-                document.getElementById('edit-employee-idcard').value = e.idcard || '';
-                document.getElementById('edit-employee-address').value = e.address || '';
-                t.innerText = '編輯員工';
-            } else {
-                document.getElementById('edit-employee-id').value = '';
-                document.getElementById('edit-employee-name').value = '';
-                document.getElementById('edit-employee-phone').value = '';
-                document.getElementById('edit-employee-idcard').value = '';
-                document.getElementById('edit-employee-address').value = '';
-                t.innerText = '新增員工';
-            }
-            modal.classList.remove('hidden');
-        }
-
-        function closeEmployeeModal() { document.getElementById('modal-employee').classList.add('hidden'); }
-
-        function saveEmployee() {
-            const id = document.getElementById('edit-employee-id').value;
-            const name = document.getElementById('edit-employee-name').value.trim();
-            const phone = document.getElementById('edit-employee-phone').value.trim();
-            const idcard = document.getElementById('edit-employee-idcard').value.trim();
-            const address = document.getElementById('edit-employee-address').value.trim();
-            
-            if(!name) { alert('請填寫員工姓名'); return; }
-
-            if(id) {
-                const idx = employees.findIndex(x => x.id === id);
-                if(idx > -1) { 
-                    employees[idx].name = name; 
-                    employees[idx].phone = phone; 
-                    employees[idx].idcard = idcard; 
-                    employees[idx].address = address; 
-                }
-            } else {
-                employees.push({ id: Date.now().toString(), name, phone, idcard, address });
-            }
-            
-            saveData();
-            closeEmployeeModal();
-            renderEmployeeList();
-            
-            // Reload Editor if open to update employee dropdown
-            if(!document.getElementById('editor-panel').classList.contains('hidden')) {
-                loadEditor();
-            }
-        }
-
-        function deleteEmployee(id) {
-            if(confirm('確定要刪除此員工嗎？')) {
-                employees = employees.filter(e => e.id !== id);
-                saveData();
-                renderEmployeeList();
-            }
-        }
-
-        // --- Extra Pages Logic ---
-        function renderExtraPagesEditor() {
-            const p = getActive();
-            const container = document.getElementById('extra-pages-container');
-            if (!container) return;
+        function renderProjectsSidebar() {
+            const container = document.getElementById('projects-sidebar-list');
+            const search = document.getElementById('project-search-input').value.toLowerCase();
             container.innerHTML = '';
-            
-            if (!p.extraPages) p.extraPages = [];
-            
-            p.extraPages.forEach((ep, idx) => {
+            projectsList.forEach(p => {
+                if (search && !(p.projectName||'').toLowerCase().includes(search) && !(p.clientName||'').toLowerCase().includes(search)) return;
                 const d = document.createElement('div');
-                d.className = 'bg-slate-50 p-3 rounded-lg border border-slate-200 relative';
-                d.innerHTML = `
-                    <div class="flex justify-between items-center mb-2 border-b border-slate-200 pb-2">
-                        <span class="text-[11px] font-bold text-slate-600 uppercase"><i class="fa-regular fa-file-lines mr-1"></i> 附加頁面 ${idx + 1}</span>
-                        <button onclick="removeExtraPage(${idx})" class="text-slate-400 hover:text-red-500 px-1" title="刪除此頁面"><i class="fa-solid fa-trash"></i></button>
-                    </div>
-                    <textarea rows="8" oninput="updateExtraPage(${idx}, this.value)" placeholder="請輸入附加頁面內容 (例如：詳細規格、合約條款等)..." class="w-full border border-slate-200 rounded-lg p-3 text-xs focus:border-theme outline-none bg-white leading-relaxed font-medium text-slate-700">${ep.content || ''}</textarea>
-                `;
+                d.onclick = () => selectProject(p.id);
+                d.className = `p-3 rounded-lg cursor-pointer border ${p.id === activeProjectId ? 'bg-blue-600/10 border-blue-500 text-white' : 'border-slate-800 text-slate-300'}`;
+                d.innerHTML = `<div class="font-bold text-xs truncate">${p.projectName || '未命名项目'}</div><div class="text-[10px] text-slate-400 mt-1">${p.clientName || '-'}</div>`;
                 container.appendChild(d);
             });
         }
 
-        function addExtraPage() {
-            const p = getActive();
-            if(!p.extraPages) p.extraPages = [];
-            p.extraPages.push({ content: '' });
-            saveData();
-            renderExtraPagesEditor();
+        function selectProject(id) {
+            activeProjectId = id;
+            activeProject = projectsList.find(p => p.id === id);
+            document.getElementById('empty-state-view').classList.add('hidden');
+            document.getElementById('project-workspace-view').classList.remove('hidden');
+            renderProjectsSidebar();
+            renderActiveProjectToForm();
+        }
+
+        function addNewProject() {
+            const p = {
+                id: 'proj_' + Date.now(), projectName: '新项目', clientName: '新客户', currency: 'CNY',
+                docDate: new Date().toISOString().split('T')[0], items: [{ description: '服务项目', quantity: 1, price: 1000 }], taxRate: 6
+            };
+            projectsList.unshift(p);
+            saveProjectsToStorage();
+            selectProject(p.id);
+        }
+
+        function renderActiveProjectToForm() {
+            const p = activeProject;
+            document.getElementById('input-project-name').value = p.projectName || '';
+            document.getElementById('input-client-name').value = p.clientName || '';
+            document.getElementById('input-currency').value = p.currency || 'CNY';
+            document.getElementById('input-doc-date').value = p.docDate || '';
+            
+            const c = document.getElementById('items-inputs-container');
+            c.innerHTML = '';
+            (p.items || []).forEach((item, idx) => {
+                const r = document.createElement('div'); r.className = 'flex gap-1.5';
+                r.innerHTML = `<input type="text" value="${item.description}" oninput="uItem(${idx}, 'description', this.value)" class="flex-1 border p-1.5 text-xs"><input type="number" value="${item.quantity}" oninput="uItem(${idx}, 'quantity', this.value)" class="w-14 border p-1.5 text-xs"><input type="number" value="${item.price}" oninput="uItem(${idx}, 'price', this.value)" class="w-20 border p-1.5 text-xs"><button onclick="rmItem(${idx})">🗑️</button>`;
+                c.appendChild(r);
+            });
             renderPreview();
         }
 
-        function updateExtraPage(idx, val) {
-            getActive().extraPages[idx].content = val;
-            saveData();
+        function uItem(idx, f, v) { activeProject.items[idx][f] = f==='description'?v:Number(v); updateActiveProjectFromInputs(); }
+        function addProjectItemRow() { activeProject.items.push({description:'', quantity:1, price:0}); renderActiveProjectToForm(); updateActiveProjectFromInputs(); }
+        function rmItem(idx) { activeProject.items.splice(idx, 1); renderActiveProjectToForm(); updateActiveProjectFromInputs(); }
+
+        function updateActiveProjectFromInputs() {
+            activeProject.projectName = document.getElementById('input-project-name').value;
+            activeProject.clientName = document.getElementById('input-client-name').value;
+            activeProject.currency = document.getElementById('input-currency').value;
+            activeProject.docDate = document.getElementById('input-doc-date').value;
+            saveProjectsToStorage();
             renderPreview();
         }
 
-        function removeExtraPage(idx) {
-            getActive().extraPages.splice(idx, 1);
-            saveData();
-            renderExtraPagesEditor();
+        function saveProjectsToStorage() {
+            localStorage.setItem('sys_projects_list', JSON.stringify(projectsList));
+            syncToCloud(); // 觸發雲端上傳
+        }
+        function saveSettingsToStorage() {
+            localStorage.setItem('sys_company_settings', JSON.stringify(companySettings));
+            syncToCloud(); // 觸發雲端上傳
+        }
+        function saveCurrentData() { showToast("已保存！", "success"); }
+
+        function switchDocType(type) {
+            currentDocType = type;
             renderPreview();
+            ['QUOTATION','INVOICE','RECEIPT','SETTINGS'].forEach(k => {
+                document.getElementById(`tab-doc-${k.toLowerCase()}`).className = type===k ? "px-3 py-2 text-xs font-semibold border-b-2 border-blue-600 text-blue-600" : "px-3 py-2 text-xs text-slate-500";
+            });
+            if(type==='SETTINGS') { document.getElementById('project-form-block').classList.add('hidden'); document.getElementById('settings-form-block').classList.remove('hidden'); }
+            else { document.getElementById('project-form-block').classList.remove('hidden'); document.getElementById('settings-form-block').classList.add('hidden'); }
         }
 
         function renderPreview() {
-            const p = getActive();
-            if(!p) return;
-
-            const t = i18n[p.lang];
+            const p = activeProject || {}; const cfg = companySettings || {};
+            const sym = CURRENCY_SYMBOLS[p.currency] || '¥';
             
-            // Meta updates
-            document.getElementById('pv-doc-title').innerText = t.docNames[p.docType];
-            document.getElementById('lbl-pv-billto').innerText = t.lblBillTo;
-            document.getElementById('pv-cust-name').innerText = p.custName || '---';
-            document.getElementById('pv-cust-contact').innerText = p.custContact || '';
+            document.getElementById('pv-seller-name').textContent = cfg.companyName || '';
+            document.getElementById('pv-doc-badge').textContent = currentDocType==='QUOTATION'?'报价单':currentDocType==='INVOICE'?'发票':'收据';
+            document.getElementById('pv-client-name').textContent = p.clientName || '';
+            document.getElementById('pv-project-title').textContent = p.projectName || '';
             
-            document.getElementById('lbl-pv-date').innerText = t.lblDate;
-            document.getElementById('pv-date').innerText = p.issueDate;
-            document.getElementById('lbl-pv-docno').innerText = t.lblDNo;
-            document.getElementById('pv-doc-no').innerText = p.docNo;
-            
-            // Due date visibility logic on Preview
-            const pvDueCon = document.getElementById('pv-due-container');
-            if (p.docType === 'quote') {
-                pvDueCon.style.display = 'flex';
-                document.getElementById('lbl-pv-valid').innerText = t.lblValid;
-                document.getElementById('pv-due').innerText = p.dueDate || '---';
-            } else {
-                pvDueCon.style.display = 'none';
-            }
-
-            // Client Signature visibility
-            const pvSignCustCon = document.getElementById('pv-client-sign-container');
-            if (p.docType === 'quote') {
-                pvSignCustCon.style.display = 'block';
-                document.getElementById('lbl-pv-accepted').innerText = t.lblAccepted;
-                document.getElementById('pv-sign-cust-name').innerText = p.custName || 'Client Name';
-            } else {
-                pvSignCustCon.style.display = 'none';
-            }
-
-            document.getElementById('lbl-pv-behalf').innerText = t.lblBehalf;
-            document.getElementById('lbl-pv-auth').innerText = t.lblAuth;
-            document.getElementById('lbl-pv-client-auth').innerText = t.lblClientAuth;
-
-            // Table headers
-            document.getElementById('lbl-pv-desc').innerText = t.lblDesc;
-            document.getElementById('lbl-pv-qty').innerText = t.lblQty;
-            document.getElementById('lbl-pv-price').innerText = t.lblPrice;
-            document.getElementById('lbl-pv-amt').innerText = t.lblAmt;
-            document.getElementById('lbl-pv-total').innerText = t.lblTotal;
-
-            // Items & Total
-            const tbody = document.getElementById('pv-items-tbody');
-            tbody.innerHTML = '';
-            let total = 0;
-
-            p.items.forEach(item => {
-                if (item.isPageBreak) {
-                    const tr = document.createElement('tr');
-                    // Injecting page break class for html2pdf and repeating table header
-                    tr.className = 'html2pdf__page-break manual-page-break';
-                    tr.innerHTML = `<td colspan="4" class="p-0 border-0 h-0 text-[0px]"></td>`;
-                    tbody.appendChild(tr);
-                    
-                    // Re-inject header after break
-                    const headerTr = document.createElement('tr');
-                    headerTr.className = 'border-b-2 border-slate-800 text-slate-700 font-bold bg-[#f1f5f9]';
-                    headerTr.innerHTML = `
-                        <td class="text-left py-2">${t.lblDesc} (Cont.)</td>
-                        <td class="text-center w-16 py-2">${t.lblQty}</td>
-                        <td class="text-right w-24 py-2">${t.lblPrice}</td>
-                        <td class="text-right w-24 py-2">${t.lblAmt}</td>
-                    `;
-                    tbody.appendChild(headerTr);
-                } else {
-                    const amt = item.qty * item.price;
-                    total += amt;
-                    const tr = document.createElement('tr');
-                    tr.className = 'border-b border-slate-100 font-medium page-break-avoid';
-                    tr.innerHTML = `
-                        <td class="text-left py-3 pr-2 whitespace-pre-wrap">${item.desc || '-'}</td>
-                        <td class="text-center py-3">${item.qty}</td>
-                        <td class="text-right py-3">${item.price.toFixed(2)}</td>
-                        <td class="text-right py-3 font-bold">${amt.toFixed(2)}</td>
-                    `;
-                    tbody.appendChild(tr);
-                }
-            });
-
-            document.getElementById('pv-total').innerText = `MOP ${total.toFixed(2)}`;
-
-            // Terms
-            document.getElementById('lbl-pv-terms').innerText = t.lblTerms;
-            document.getElementById('pv-terms').innerText = p.terms || '';
-            
-            // Terms Page Break Logic
-            const termsBox = document.getElementById('pv-terms-container');
-            if (p.termsBreak) {
-                termsBox.classList.add('html2pdf__page-break', 'manual-page-break', 'pt-8');
-            } else {
-                termsBox.classList.remove('html2pdf__page-break', 'manual-page-break', 'pt-8');
-            }
-            
-            // Images (Logo and Stamp) safely handled to prevent Promise rejection
-            const imgLogo = document.getElementById('pv-logo');
-            if(settings.logo) { imgLogo.src = settings.logo; imgLogo.classList.remove('hidden'); } 
-            else { imgLogo.removeAttribute('src'); imgLogo.classList.add('hidden'); }
-            
-            const imgStamp = document.getElementById('pv-stamp');
-            if(settings.stamp) { imgStamp.src = settings.stamp; imgStamp.classList.remove('hidden'); } 
-            else { imgStamp.removeAttribute('src'); imgStamp.classList.add('hidden'); }
-
-            // --- Extra Pages Preview Rendering ---
-            document.querySelectorAll('.extra-page-preview').forEach(el => el.remove());
-            
-            if (p.extraPages && p.extraPages.length > 0) {
-                const wrapper = document.getElementById('pdf-export-wrapper');
-                const headerMaster = document.getElementById('pv-doc-header');
-                const footerMaster = document.getElementById('pv-doc-footer');
-                
-                p.extraPages.forEach((ep) => {
-                    const pageDiv = document.createElement('div');
-                    pageDiv.className = 'a4-preview-container extra-page-preview px-[12mm] py-[12mm] bg-white shadow-xl relative text-slate-800 shrink-0 mt-8 html2pdf__page-break manual-page-break block';
-                    
-                    // Clone Header
-                    const headerClone = headerMaster.cloneNode(true);
-                    headerClone.removeAttribute('id'); // Remove id to avoid duplicate issues
-                    pageDiv.appendChild(headerClone);
-                    
-                    // Content Body (Min-height pushes footer down)
-                    const bodyDiv = document.createElement('div');
-                    bodyDiv.className = 'py-8 text-xs text-slate-800 whitespace-pre-wrap leading-[1.8] font-medium';
-                    bodyDiv.innerText = ep.content || '';
-                    pageDiv.appendChild(bodyDiv);
-                    
-                    // Extra Page Spacer
-                    const spacerDiv = document.createElement('div');
-                    spacerDiv.className = 'extra-page-spacer';
-                    pageDiv.appendChild(spacerDiv);
-
-                    // Clone Footer
-                    const footerClone = footerMaster.cloneNode(true);
-                    footerClone.removeAttribute('id');
-                    pageDiv.appendChild(footerClone);
-                    
-                    wrapper.appendChild(pageDiv);
-                });
-            }
-
-            // Adjust Footer Position to always sit at the bottom of the A4 page
-            setTimeout(adjustFooterPosition, 50);
-        }
-
-        function adjustFooterPosition() {
-            // PDF printable area calculation: 297mm (A4 height) - 30mm (15mm top + 15mm bottom margin) = 267mm
-            const mmToPx = 3.779527559;
-            const pageHeightPx = 267 * mmToPx; 
-
-            // 1. Adjust Main Page
-            const mainContainer = document.getElementById('printable-a4');
-            const mainSpacer = document.getElementById('pv-spacer');
-            if(mainContainer && mainSpacer) {
-                mainSpacer.style.height = '0px';
-                const height = mainContainer.offsetHeight;
-                const remainder = height % pageHeightPx;
-                
-                // Add spacer so total height lands perfectly on a multiple of A4 page height
-                if (remainder > 0 && remainder < (pageHeightPx - 5)) {
-                    mainSpacer.style.height = (pageHeightPx - remainder) + 'px';
-                }
-            }
-
-            // 2. Adjust Extra Pages
-            const extraPages = document.querySelectorAll('.extra-page-preview');
-            extraPages.forEach((page) => {
-                const spacer = page.querySelector('.extra-page-spacer');
-                if (spacer) {
-                    spacer.style.height = '0px';
-                    const height = page.offsetHeight;
-                    const remainder = height % pageHeightPx;
-                    if (remainder > 0 && remainder < (pageHeightPx - 5)) {
-                        spacer.style.height = (pageHeightPx - remainder) + 'px';
-                    }
-                }
-            });
-        }
-
-        // Settings Handlers
-        function handleImageUpload(e, type) {
-            const file = e.target.files[0];
-            if(!file) return;
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                settings[type] = event.target.result;
-                saveData(); updateSettingsUI(); renderPreview();
-            };
-            reader.readAsDataURL(file);
-        }
-        function clearImage(type) { settings[type] = null; saveData(); updateSettingsUI(); renderPreview(); }
-        function updateSettingsUI() {
-            ['logo', 'stamp'].forEach(t => {
-                const img = document.getElementById(`set-img-${t}`);
-                const txt = document.getElementById(`set-txt-${t}`);
-                if (!img || !txt) return; // 加上防空值檢查
-                
-                if(settings[t]) { img.src = settings[t]; img.classList.remove('hidden'); txt.classList.add('hidden'); }
-                else { img.classList.add('hidden'); txt.classList.remove('hidden'); }
-            });
-        }
-
-        // Dashboard Logic & Pagination
-        let dashCurrentPage = 1;
-        const dashItemsPerPage = 20;
-
-        function updateDashboard() {
-            const range = document.getElementById('dash-time-range').value;
-            const customDates = document.getElementById('dash-custom-dates');
-            
-            if(range === 'custom') customDates.style.display = 'flex';
-            else customDates.style.display = 'none';
-
-            // Calculate Dates
-            const today = new Date();
-            let dStart = new Date(0), dEnd = new Date(3000, 0, 1);
-            
-            if (range === 'this_month') {
-                dStart = new Date(today.getFullYear(), today.getMonth(), 1);
-                dEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            } else if (range === 'last_month') {
-                dStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                dEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-            } else if (range === 'this_quarter') {
-                const qStartMonth = Math.floor(today.getMonth() / 3) * 3;
-                dStart = new Date(today.getFullYear(), qStartMonth, 1);
-                dEnd = new Date(today.getFullYear(), qStartMonth + 3, 0);
-            } else if (range === 'this_year') {
-                dStart = new Date(today.getFullYear(), 0, 1);
-                dEnd = new Date(today.getFullYear(), 11, 31);
-            } else if (range === 'custom') {
-                const s = document.getElementById('dash-start').value;
-                const e = document.getElementById('dash-end').value;
-                if(s) dStart = new Date(s);
-                if(e) dEnd = new Date(e);
-            }
-
-            const search = document.getElementById('dash-search').value.toLowerCase();
-            
-            let tRev=0, tPaid=0, tPend=0, count=0, tCost=0, tProfit=0;
-            let filteredProjects = [];
-            
-            // Map types & status
-            const tNames = { quote:'報價單', invoice:'發票', receipt:'收據' };
-            const sNames = { draft:'草稿', quoted:'已報價', in_progress:'進行中', pending_payment:'待收款', completed:'已完成', sent:'已發送', paid:'已付款', cancelled:'已取消' };
-            const sColors = { draft:'text-slate-500', quoted:'text-blue-500', in_progress:'text-amber-500', pending_payment:'text-rose-500', completed:'text-emerald-500', sent:'text-blue-500', paid:'text-emerald-500', cancelled:'text-red-500' };
-
-            projects.forEach(p => {
-                const pDate = new Date(p.issueDate);
-                if(pDate >= dStart && pDate <= dEnd) {
-                    if(search && !p.projName.toLowerCase().includes(search) && !p.custName.toLowerCase().includes(search) && !p.docNo.toLowerCase().includes(search)) return;
-                    
-                    let amt = 0;
-                    p.items.forEach(i => { if(!i.isPageBreak) amt += (i.qty * i.price); });
-
-                    let costAmt = 0;
-                    if(p.costs) p.costs.forEach(c => { costAmt += (c.amount || 0); });
-                    let profitAmt = amt - costAmt;
-                    
-                    if(p.status !== 'cancelled') {
-                        tRev += amt;
-                        tCost += costAmt;
-                        tProfit += profitAmt;
-                    }
-                    if(['completed', 'paid'].includes(p.status)) tPaid += amt;
-                    if(['quoted', 'in_progress', 'pending_payment', 'sent'].includes(p.status)) tPend += amt;
-                    count++;
-                    
-                    filteredProjects.push({ ...p, totalAmt: amt, costAmt: costAmt, profitAmt: profitAmt });
-                }
-            });
-
-            // Update KPI
-            document.getElementById('dash-total-rev').innerText = `MOP ${tRev.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('dash-cost').innerText = `MOP ${tCost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('dash-profit').innerText = `MOP ${tProfit.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('dash-paid').innerText = `MOP ${tPaid.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('dash-pending').innerText = `MOP ${tPend.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            
-            if(document.getElementById('dash-count')) document.getElementById('dash-count').innerText = count;
-            
-            document.getElementById('dash-table-total').innerText = `營業額: MOP ${tRev.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} | 盈利: MOP ${tProfit.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-
-            // Pagination Logic
-            const totalPages = Math.ceil(filteredProjects.length / dashItemsPerPage) || 1;
-            if(dashCurrentPage > totalPages) dashCurrentPage = totalPages;
-            if(dashCurrentPage < 1) dashCurrentPage = 1;
-
-            document.getElementById('dash-page-info').innerText = `共 ${filteredProjects.length} 筆，第 ${dashCurrentPage}/${totalPages} 頁`;
-
-            const startIdx = (dashCurrentPage - 1) * dashItemsPerPage;
-            const paginatedProjects = filteredProjects.slice(startIdx, startIdx + dashItemsPerPage);
-
-            // Render Table
-            const tbody = document.getElementById('dash-table-body');
-            tbody.innerHTML = '';
-            paginatedProjects.forEach(p => {
-                let empName = '-';
-                if(p.employeeId) {
-                    const e = employees.find(x => x.id === p.employeeId);
-                    if(e) empName = e.name;
-                }
-
+            let t = 0; const tbody = document.getElementById('pv-items-tbody'); tbody.innerHTML = '';
+            (p.items || []).forEach((item, i) => {
+                t += item.quantity * item.price;
                 const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50 transition';
-                tr.innerHTML = `
-                    <td class="px-4 py-3">${p.issueDate}</td>
-                    <td class="px-4 py-3 font-bold">
-                        <button onclick="goToProject('${p.id}')" class="text-theme hover:text-blue-700 hover:underline transition" title="點擊查看或編輯單據">${p.docNo}</button>
-                    </td>
-                    <td class="px-4 py-3">${tNames[p.docType]}</td>
-                    <td class="px-4 py-3 max-w-[150px] truncate" title="${p.projName}">${p.projName || '-'}</td>
-                    <td class="px-4 py-3 max-w-[150px] truncate" title="${p.custName}">${p.custName || '-'}</td>
-                    <td class="px-4 py-3 max-w-[100px] truncate text-slate-600 font-medium" title="${empName}">${empName}</td>
-                    <td class="px-4 py-3 font-bold ${sColors[p.status]}">${sNames[p.status]}</td>
-                    <td class="px-4 py-3 text-right font-bold text-slate-800">${p.totalAmt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                    <td class="px-4 py-3 text-right font-bold text-rose-500">${p.costAmt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                    <td class="px-4 py-3 text-right font-bold ${p.profitAmt >= 0 ? 'text-emerald-600' : 'text-red-500'}">${p.profitAmt.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                `;
+                tr.innerHTML = `<td class="py-2 px-2">${i+1}</td><td class="py-2 px-2">${item.description}</td><td class="py-2 px-2 text-right">${item.quantity}</td><td class="py-2 px-2 text-right">${sym}${item.price}</td><td class="py-2 px-2 text-right">${sym}${item.quantity*item.price}</td>`;
                 tbody.appendChild(tr);
             });
+            document.getElementById('pv-math-grandtotal').textContent = `${sym}${t}`;
         }
 
-        function dashChangePage(dir) {
-            dashCurrentPage += dir;
-            updateDashboard();
+        function syncCompanySettingsUI() { document.getElementById('cfg-company-name').value = companySettings.companyName || ''; }
+        function updateCompanyProfileFromForm() { companySettings.companyName = document.getElementById('cfg-company-name').value; saveSettingsToStorage(); renderPreview(); }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast-box'); document.getElementById('toast-text').textContent = msg;
+            t.classList.remove('translate-y-10', 'opacity-0');
+            setTimeout(() => t.classList.add('translate-y-10', 'opacity-0'), 2000);
         }
-
-        // PDF Export Handler
-        function exportPDF() {
-            try {
-                // Export Target is the wrapper containing all pages
-                const el = document.getElementById('pdf-export-wrapper');
-                const p = getActive();
-                if (!p) return; 
-                
-                // 1. Backup classes
-                const originalClasses = el.className;
-                
-                // 2. Temporarily fix widths and remove shadow for clean export
-                el.className = "w-[210mm]"; 
-                
-                const containers = el.querySelectorAll('.a4-preview-container');
-                containers.forEach(c => {
-                    c.setAttribute('data-orig-class', c.className);
-                    c.classList.remove('shadow-xl', 'py-[12mm]', 'mt-8');
-                    c.style.margin = '0';
-                });
-                
-                // Recalculate spacer WITHOUT padding for perfect PDF alignment
-                adjustFooterPosition();
-
-                // Options: 15mm top/bottom margins, format A4
-                const opt = {
-                    margin: [15, 0, 15, 0], 
-                    filename: `${p.docNo}_${p.custName || 'Client'}.pdf`,
-                    image: { type: 'jpeg', quality: 1 },
-                    html2canvas: { 
-                        scale: 2, 
-                        useCORS: true, 
-                        allowTaint: true, 
-                        scrollX: 0,
-                        scrollY: 0
-                    },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                    pagebreak: { mode: ['css', 'legacy'] }
-                };
-
-                const worker = html2pdf().set(opt).from(el);
-                
-                worker.save()
-                .then(() => {
-                    // 3. Restore classes after export
-                    el.className = originalClasses;
-                    containers.forEach(c => {
-                        c.className = c.getAttribute('data-orig-class');
-                        c.style.margin = '';
-                    });
-                    adjustFooterPosition(); // Restore UI spacer
-                })
-                .catch(err => {
-                    console.warn("Caught PDF export error (ignoring):", err);
-                    el.className = originalClasses;
-                    containers.forEach(c => {
-                        c.className = c.getAttribute('data-orig-class');
-                        c.style.margin = '';
-                    });
-                    adjustFooterPosition(); // Restore UI spacer
-                });
-
-            } catch (err) {
-                console.warn("Caught init PDF error:", err);
-            }
+        
+        function exportToPDF() {
+            html2pdf().set({margin: 8, filename: `Document.pdf`, jsPDF: {unit: 'mm', format: 'a4'}}).from(document.getElementById('printable-document-card')).save();
         }
     </script>
 </body>
