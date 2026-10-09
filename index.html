@@ -83,7 +83,7 @@
 <body class="h-screen flex flex-col text-slate-800 overflow-hidden">
 
     <!-- Login Overlay -->
-    <div id="login-overlay" class="fixed inset-0 bg-slate-900/95 z-[100] flex items-center justify-center fade-in">
+    <div id="login-overlay" class="fixed inset-0 bg-slate-900 z-[100] flex items-center justify-center fade-in">
         <div class="bg-white p-8 rounded-2xl shadow-2xl w-[400px] text-center border border-slate-100">
             <div class="w-16 h-16 bg-theme-light text-theme rounded-full flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
                 <i class="fa-solid fa-shield-halved"></i>
@@ -793,8 +793,8 @@
         
         // 🔒 授權白名單 (重要！請在這裡填入您自己和員工的 Google Email)
         const ALLOWED_EMAILS = [
-            'oliver@nestgrowthmarketing.com', // <--- 替換成您的真實 Email
-            'hongkammeng@gmail.com'       // <--- 如果有其他員工，加在下面
+            'your.email@gmail.com', // <--- 替換成您的真實 Email
+            'admin@gmail.com'       // <--- 如果有其他員工，加在下面
         ];
 
         window.addEventListener('firebase-loaded', async () => {
@@ -863,7 +863,8 @@
                         await signInWithPopup(auth, provider);
                     } catch (err) {
                         console.error("登入失敗:", err);
-                        errorMsg.innerText = "登入取消或發生錯誤。";
+                        // 將模糊的錯誤訊息改成顯示具體的 Firebase 報錯，方便除錯
+                        errorMsg.innerText = "登入失敗：" + err.message;
                         errorMsg.classList.remove('hidden');
                     }
                 };
