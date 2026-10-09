@@ -14,11 +14,11 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         window.FirebaseModule = {
             initializeApp, getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
-            getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection
+            getFirestore, doc, setDoc, getDoc, deleteDoc, onSnapshot, collection
         };
         window.dispatchEvent(new Event('firebase-loaded'));
     </script>
@@ -687,6 +687,19 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Admin Only: Account Management -->
+                <div id="admin-account-management" class="hidden border-t border-slate-100 pt-6 mt-6">
+                    <h3 class="text-sm font-bold text-slate-800 mb-3"><i class="fa-solid fa-user-shield text-theme mr-2"></i>員工登入權限管理 (僅管理員可見)</h3>
+                    <p class="text-[10px] text-slate-500 mb-3">加入列表的 Google 帳號將可以登入此系統並協作。</p>
+                    <div class="flex gap-2 mb-4">
+                        <input type="email" id="new-auth-email" placeholder="輸入員工的 Google Email" class="flex-1 border border-slate-200 rounded-lg p-2 text-xs focus:border-theme outline-none">
+                        <button onclick="addAuthorizedEmail()" class="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-slate-700 transition shadow">新增授權</button>
+                    </div>
+                    <div id="authorized-emails-list" class="space-y-2 max-h-32 overflow-y-auto pr-1">
+                        <!-- Emails will be populated here -->
+                    </div>
+                </div>
             </div>
             <div class="p-4 border-t border-slate-100 flex justify-end bg-slate-50 rounded-b-xl">
                 <button onclick="closeSettings()" class="px-6 py-2 bg-theme text-white text-xs font-bold rounded hover:bg-blue-500 transition shadow">完成</button>
@@ -791,11 +804,9 @@
         let db, auth, currentUserId, cloudAppId;
         let cloudDebounceTimer;
         
-        // 🔒 授權白名單 (重要！請在這裡填入您自己和員工的 Google Email)
-        const ALLOWED_EMAILS = [
-            'oliver@nestgrowthmarketing.com', // 您的管理員帳號
-            'admin@gmail.com'       // 如果有其他員工，可以繼續加在下面
-        ];
+        // 🔒 最高權限管理員設定
+        const ROOT_ADMIN = 'oliver@nestgrowthmarketing.com';
+        let isAdmin = false;
 
         window.addEventListener('firebase-loaded', async () => {
             const firebaseConfig = {
@@ -820,13 +831,37 @@
                 let authInitialized = false;
 
                 // 監聽登入狀態與審查權限
-                onAuthStateChanged(auth, (user) => {
+                onAuthStateChanged(auth, async (user) => {
                     const overlay = document.getElementById('login-overlay');
                     const errorMsg = document.getElementById('login-error');
                     
                     if (user) {
-                        // 檢查 Email 是否在白名單中
-                        if (ALLOWED_EMAILS.includes(user.email)) {
+                        let isAllowed = false;
+                        
+                        // 1. 檢查是否為最高管理員
+                        if (user.email === ROOT_ADMIN) {
+                            isAllowed = true;
+                            isAdmin = true;
+                        } else {
+                            // 2. 普通帳號去雲端核對授權名單
+                            isAdmin = false;
+                            try {
+                                const { getDoc, doc } = window.FirebaseModule;
+                                // 登入前向雲端拉取最新的 Settings 資料核對 Email
+                                const docSnap = await getDoc(doc(db, `artifacts/${cloudAppId}/shared/company_data/crm/settings`));
+                                if (docSnap.exists()) {
+                                    const data = docSnap.data();
+                                    const authEmails = data.authorizedEmails || [];
+                                    if (authEmails.includes(user.email)) {
+                                        isAllowed = true;
+                                    }
+                                }
+                            } catch (e) {
+                                console.error("驗證權限錯誤:", e);
+                            }
+                        }
+
+                        if (isAllowed) {
                             currentUserId = user.uid;
                             useCloud = true;
                             overlay.classList.add('hidden'); // 權限通過，隱藏保護網
@@ -836,6 +871,13 @@
                             if(user.photoURL) {
                                 document.getElementById('user-avatar-display').innerHTML = `<img src="${user.photoURL}" class="w-full h-full rounded-full object-cover">`;
                             }
+
+                            // 控制管理員專屬介面顯示
+                            const adminPanel = document.getElementById('admin-account-management');
+                            if(adminPanel) {
+                                if(isAdmin) adminPanel.classList.remove('hidden');
+                                else adminPanel.classList.add('hidden');
+                            }
                             
                             // 啟動資料同步 (避免重複啟動)
                             if(!authInitialized) {
@@ -844,7 +886,7 @@
                             }
                         } else {
                             // 無權限，強制登出並顯示錯誤
-                            errorMsg.innerHTML = `抱歉，帳號 <b>${user.email}</b> 沒有存取權限。<br>請聯絡系統管理員新增。`;
+                            errorMsg.innerHTML = `抱歉，帳號 <b>${user.email}</b> 沒有存取權限。<br>請聯絡管理員 (oliver) 開通。`;
                             errorMsg.classList.remove('hidden');
                             signOut(auth);
                         }
@@ -2005,6 +2047,66 @@
                 if(settings[t]) { img.src = settings[t]; img.classList.remove('hidden'); txt.classList.add('hidden'); }
                 else { img.classList.add('hidden'); txt.classList.remove('hidden'); }
             });
+            
+            // 若為管理員，則載入授權名單
+            if(isAdmin) renderAuthorizedEmails();
+        }
+
+        // --- Admin Authorization Logic ---
+        function renderAuthorizedEmails() {
+            if(!isAdmin) return;
+            const list = document.getElementById('authorized-emails-list');
+            if(!list) return;
+            list.innerHTML = '';
+            
+            const authEmails = settings.authorizedEmails || [];
+            
+            if(authEmails.length === 0) {
+                list.innerHTML = '<div class="text-xs text-slate-400 p-3 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200 mt-2">目前尚未授權其他員工帳號。</div>';
+                return;
+            }
+
+            authEmails.forEach((email, idx) => {
+                const d = document.createElement('div');
+                d.className = 'flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm text-xs text-slate-700 font-medium';
+                d.innerHTML = `
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-user text-slate-400"></i> ${email}</div>
+                    <button onclick="removeAuthorizedEmail(${idx})" class="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded transition" title="移除權限"><i class="fa-solid fa-trash-can"></i></button>
+                `;
+                list.appendChild(d);
+            });
+        }
+
+        function addAuthorizedEmail() {
+            if(!isAdmin) return;
+            const input = document.getElementById('new-auth-email');
+            const email = input.value.trim().toLowerCase();
+            
+            if(!email) { alert("請輸入 Email！"); return; }
+            if(!email.includes('@')) { alert("請輸入有效的 Email 格式！"); return; }
+            
+            if(!settings.authorizedEmails) settings.authorizedEmails = [];
+            
+            if(settings.authorizedEmails.includes(email) || email === ROOT_ADMIN) {
+                alert("此帳號已經在授權名單中或為管理員帳號！");
+                return;
+            }
+            
+            settings.authorizedEmails.push(email);
+            input.value = '';
+            saveData();
+            renderAuthorizedEmails();
+            alert(`已成功授權 ${email} 登入系統！\n對方現在可以使用該 Google 帳號登入了。`);
+        }
+
+        function removeAuthorizedEmail(idx) {
+            if(!isAdmin) return;
+            const email = settings.authorizedEmails[idx];
+            if(confirm(`確定要移除 ${email} 的登入權限嗎？\n移除後對方將無法登入系統。`)) {
+                settings.authorizedEmails.splice(idx, 1);
+                saveData();
+                renderAuthorizedEmails();
+            }
         }
 
         // Dashboard Logic & Pagination
