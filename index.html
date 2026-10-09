@@ -2076,18 +2076,22 @@
             // PDF printable area calculation: 297mm (A4 height) - 30mm (15mm top + 15mm bottom margin) = 267mm
             const mmToPx = 3.779527559;
             const pageHeightPx = 267 * mmToPx; 
+            
+            // ⭐️ 關鍵修改：加入 12mm (約 45px) 的安全緩衝高度，防止因小數點誤差導致頁尾被擠到第二頁
+            const safetyMarginPx = 12 * mmToPx; 
 
             // 1. Adjust Main Page
             const mainContainer = document.getElementById('printable-a4');
             const mainSpacer = document.getElementById('pv-spacer');
             if(mainContainer && mainSpacer) {
-                mainSpacer.style.height = '0px';
+                mainSpacer.style.height = '0px'; // Reset first to get natural height
                 const height = mainContainer.offsetHeight;
                 const remainder = height % pageHeightPx;
                 
-                // Add spacer so total height lands perfectly on a multiple of A4 page height
-                if (remainder > 0 && remainder < (pageHeightPx - 5)) {
-                    mainSpacer.style.height = (pageHeightPx - remainder) + 'px';
+                // 只有在當前頁面還有足夠的剩餘空間時，才加入推擠器。
+                // 減去 safetyMarginPx，確保高度絕對不會超過 A4 邊界！
+                if (remainder > 0 && remainder < (pageHeightPx - safetyMarginPx)) {
+                    mainSpacer.style.height = (pageHeightPx - remainder - safetyMarginPx) + 'px';
                 }
             }
 
@@ -2096,11 +2100,12 @@
             extraPages.forEach((page) => {
                 const spacer = page.querySelector('.extra-page-spacer');
                 if (spacer) {
-                    spacer.style.height = '0px';
+                    spacer.style.height = '0px'; // Reset first
                     const height = page.offsetHeight;
                     const remainder = height % pageHeightPx;
-                    if (remainder > 0 && remainder < (pageHeightPx - 5)) {
-                        spacer.style.height = (pageHeightPx - remainder) + 'px';
+                    
+                    if (remainder > 0 && remainder < (pageHeightPx - safetyMarginPx)) {
+                        spacer.style.height = (pageHeightPx - remainder - safetyMarginPx) + 'px';
                     }
                 }
             });
