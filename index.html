@@ -393,12 +393,15 @@
                             </div>
 
                             <!-- 5. Terms & Signatures Wrapper -->
-                            <div id="pv-terms-container" class="page-break-avoid">
+                            <div id="pv-terms-container" class="page-break-avoid flex flex-col">
                                 <!-- Terms -->
                                 <div id="pv-terms-wrapper" class="mb-8">
                                     <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1 inline-block" id="lbl-pv-terms">條款與備註</div>
                                     <div class="text-[11px] text-slate-600 whitespace-pre-wrap leading-relaxed font-medium" id="pv-terms"></div>
                                 </div>
+
+                                <!-- 🌟 Spacer 被移動到這裡：用來將下方的簽名和頁尾一起推到 A4 紙的最底部 🌟 -->
+                                <div id="pv-spacer"></div>
 
                                 <!-- Signatures -->
                                 <div class="flex justify-between items-end mt-8 relative">
@@ -424,9 +427,6 @@
                                     </div>
                                 </div>
                             </div>
-
-                            <!-- Spacer to push footer to the absolute bottom -->
-                            <div id="pv-spacer"></div>
 
                             <!-- DOC FOOTER -->
                             <div id="pv-doc-footer" class="mt-8 text-center text-[9px] text-slate-400 border-t border-slate-100 pt-3 page-break-avoid">
