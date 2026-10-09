@@ -772,14 +772,13 @@
         window.addEventListener('firebase-loaded', async () => {
             // [設定教學] 請將下方的 firebaseConfig 替換為您在 Firebase 主控台取得的設定代碼
             const firebaseConfig = {
-              apiKey: "AIzaSyAQd6Mz7_wMyOqgCRva0jcqlWHwljy4nSY",
-              authDomain: "nestprosystem.firebaseapp.com",
-            projectId: "nestprosystem",
-            storageBucket: "nestprosystem.firebasestorage.app",
-              messagingSenderId: "173379181940",
-              appId: "1:173379181940:web:3cb0240903eefc6acfe021",
-              measurementId: "G-9S53ZR1TBH"
-                };
+                apiKey: "YOUR_API_KEY", // <--- 1. 替換成您的 API Key
+                authDomain: "your-project.firebaseapp.com", // <--- 2. 替換成您的 Auth Domain
+                projectId: "your-project", // <--- 3. 替換成您的 Project ID
+                storageBucket: "your-project.appspot.com",
+                messagingSenderId: "123456789",
+                appId: "1:123456789:web:abcdef"
+            };
 
             if (firebaseConfig.apiKey === "YOUR_API_KEY") {
                 console.log("⚠️ 尚未設定 Firebase 金鑰，目前使用離線 (LocalStorage) 模式。");
@@ -813,7 +812,7 @@
 
         function startCloudListeners() {
             const { onSnapshot, collection, doc, setDoc } = window.FirebaseModule;
-            const basePath = `artifacts/${cloudAppId}/users/${currentUserId}`;
+            const basePath = `artifacts/${cloudAppId}/shared/company_data`;
 
             // 1. 監聽專案 (Projects)
             onSnapshot(collection(db, basePath, 'projects'), { includeMetadataChanges: true }, (snap) => {
@@ -868,7 +867,7 @@
         async function syncToCloud() {
             if (!useCloud || !currentUserId) return;
             const { setDoc, doc } = window.FirebaseModule;
-            const basePath = `artifacts/${cloudAppId}/users/${currentUserId}`;
+            const basePath = `artifacts/${cloudAppId}/shared/company_data`;
 
             try {
                 const p = getActive();
@@ -1034,7 +1033,7 @@
             if(confirm('確定要刪除此項目嗎？')) {
                 if (useCloud && currentUserId) {
                     const { deleteDoc, doc } = window.FirebaseModule;
-                    deleteDoc(doc(db, `artifacts/${cloudAppId}/users/${currentUserId}/projects`, activeProjectId)).catch(console.error);
+                    deleteDoc(doc(db, `artifacts/${cloudAppId}/shared/company_data/projects`, activeProjectId)).catch(console.error);
                 }
                 
                 projects = projects.filter(p => p.id !== activeProjectId);
