@@ -981,21 +981,24 @@
 
             // 監聽 CRM 資料 (雙向同步：自動下載客戶、供應商、員工)
             onSnapshot(doc(db, basePath, 'crm', 'clients'), (snap) => {
-                if (snap.exists() && !snap.metadata.hasPendingWrites) {
+                if (snap.metadata.hasPendingWrites) return;
+                if (snap.exists()) {
                     clients = snap.data().list || [];
                     localStorage.setItem('nest_clients', JSON.stringify(clients));
                     renderClientList();
                 }
             });
             onSnapshot(doc(db, basePath, 'crm', 'suppliers'), (snap) => {
-                if (snap.exists() && !snap.metadata.hasPendingWrites) {
+                if (snap.metadata.hasPendingWrites) return;
+                if (snap.exists()) {
                     suppliers = snap.data().list || [];
                     localStorage.setItem('nest_suppliers', JSON.stringify(suppliers));
                     renderSupplierList();
                 }
             });
             onSnapshot(doc(db, basePath, 'crm', 'employees'), (snap) => {
-                if (snap.exists() && !snap.metadata.hasPendingWrites) {
+                if (snap.metadata.hasPendingWrites) return;
+                if (snap.exists()) {
                     employees = snap.data().list || [];
                     localStorage.setItem('nest_employees', JSON.stringify(employees));
                     renderEmployeeList();
@@ -1007,43 +1010,29 @@
             });
 
             // 監聽專案 (Projects)
-            onSnapshot(collection(db, basePath, 'projects'), { includeMetadataChanges: true }, (snap) => {
-                let hasExternalChanges = false;
-                let needsActiveReload = false;
+            onSnapshot(collection(db, basePath, 'projects'), (snap) => {
+                // 忽略本機寫入時產生的即時回音，避免打斷使用者打字
+                if (snap.metadata.hasPendingWrites) return;
 
-                // 自動遷移本機資料至雲端
-                if (snap.docs.length === 0 && projects.length > 0) {
-                    console.log("☁️ 正在將本機專案備份至雲端...");
-                    projects.forEach(p => setDoc(doc(db, basePath, 'projects', p.id), p).catch(console.error));
-                    return;
-                }
+                const cloudProjects = [];
+                snap.docs.forEach(d => cloudProjects.push(d.data()));
 
-                snap.docChanges().forEach(change => {
-                    const docSnap = change.doc;
-                    if (change.type === 'removed') {
-                        projects = projects.filter(p => p.id !== docSnap.id);
-                        hasExternalChanges = true;
-                    } else {
-                        // 如果不是本機正在上傳的狀態
-                        if (!docSnap.metadata.hasPendingWrites) {
-                            hasExternalChanges = true;
-                            const idx = projects.findIndex(p => p.id === docSnap.id);
-                            if (idx > -1) {
-                                projects[idx] = docSnap.data();
-                            } else {
-                                projects.push(docSnap.data());
-                            }
-                            if (docSnap.id === activeProjectId) needsActiveReload = true;
-                        }
-                    }
-                });
-
-                if (hasExternalChanges) {
-                    projects.sort((a, b) => b.id.localeCompare(a.id));
+                if (cloudProjects.length > 0) {
+                    // 雲端為最新狀態，覆寫本機資料
+                    projects = cloudProjects.sort((a, b) => b.id.localeCompare(a.id));
                     localStorage.setItem('nest_projects', JSON.stringify(projects));
                     renderProjectList();
                     updateDashboard();
-                    if (needsActiveReload) loadEditor();
+
+                    // 無痕模式或初次載入時，自動展開第一張單據
+                    if (!activeProjectId && projects.length > 0) {
+                        selectProject(projects[0].id);
+                    } else if (activeProjectId) {
+                        loadEditor();
+                    }
+                } else if (projects.length > 0) {
+                    // 如果雲端為空但本機有資料，強制執行完整備份
+                    forceSyncToCloud();
                 }
             }, (err) => console.error("Projects 同步錯誤:", err));
         }
@@ -1068,8 +1057,10 @@
                     setDoc(doc(db, basePath, 'crm', 'settings'), settings)
                 ];
                 
-                const p = getActive();
-                if (p) promises.push(setDoc(doc(db, basePath, 'projects', p.id), p));
+                // 🔥 關鍵修復：上傳「所有」單據，而不只是正在編輯的那一張
+                projects.forEach(p => {
+                    promises.push(setDoc(doc(db, basePath, 'projects', p.id), p));
+                });
                 
                 await Promise.all(promises);
                 
@@ -1080,7 +1071,7 @@
                 }
                 
                 // 只有手動點擊按鈕，才顯示成功的彈窗
-                if (isManual) alert('✅ 雲端同步成功！資料已安全備份。');
+                if (isManual) alert('✅ 雲端同步成功！所有歷史資料已安全備份。');
                 
             } catch (err) {
                 console.error("上傳至雲端失敗:", err);
