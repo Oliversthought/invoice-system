@@ -96,7 +96,7 @@
                 使用 Google 帳號登入
             </button>
             
-            <p id="login-error" class="text-xs text-red-500 mt-4 hidden bg-red-50 p-2 rounded-lg border border-red-100"></p>
+            <p id="login-error" class="text-xs text-red-500 mt-4 hidden bg-red-50 p-3 rounded-lg border border-red-100 font-bold leading-relaxed shadow-inner"></p>
         </div>
     </div>
 
@@ -168,7 +168,7 @@
                 <div class="p-4 bg-white border-b border-slate-200 flex justify-between items-center shadow-sm shrink-0 z-10">
                     <h2 class="text-sm font-bold text-slate-800"><i class="fa-solid fa-pen-to-square text-theme mr-2"></i>編輯單據</h2>
                     <div class="flex items-center gap-2">
-                        <span id="sync-status" class="text-[10px] font-bold w-16 text-right text-slate-400 transition-colors"></span>
+                        <span id="sync-status" class="text-[10px] font-bold w-20 text-right text-slate-400 transition-colors"></span>
                         <button onclick="forceSyncToCloud()" class="px-2 py-1 bg-white border border-slate-200 text-slate-600 text-[11px] font-bold rounded shadow-sm hover:bg-slate-50 transition flex items-center gap-1" title="強制同步至雲端"><i class="fa-solid fa-cloud-arrow-up text-theme"></i> 儲存</button>
                         <select id="inp-doc-lang" onchange="syncInputToProject()" class="text-xs font-bold text-slate-600 bg-slate-100 border-none rounded p-1 outline-none cursor-pointer">
                             <option value="zh-HK">繁體中文</option>
@@ -188,7 +188,9 @@
 
                     <!-- Client Info -->
                     <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2"><i class="fa-solid fa-building-user text-theme mr-1"></i> 客戶資訊</h3>
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider"><i class="fa-solid fa-building-user text-theme mr-1"></i> 客戶資訊</h3>
+                        </div>
                         <div class="space-y-3">
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-500 mb-1">項目名稱 (Project Name)</label>
@@ -246,6 +248,13 @@
                         <div id="editor-due-container">
                             <label class="block text-[11px] font-bold text-slate-500 mb-1">有效日期 (Valid Until)</label>
                             <input type="date" id="inp-due" onchange="syncInputToProject()" class="w-full border border-slate-200 rounded p-2 text-xs outline-none focus:border-theme">
+                        </div>
+                        <!-- 新增：內部收款日期 (收據專用) -->
+                        <div id="editor-receipt-date-container" class="hidden">
+                            <label class="flex items-center gap-1 text-[11px] font-bold text-pink-600 mb-1">
+                                <i class="fa-solid fa-lock text-[10px]"></i> 實際收款日期 (內部)
+                            </label>
+                            <input type="date" id="inp-receipt-date" onchange="syncInputToProject()" class="w-full border border-pink-200 bg-pink-50 rounded p-2 text-xs outline-none focus:border-pink-400">
                         </div>
                     </div>
 
@@ -371,7 +380,8 @@
                             <table class="w-full text-xs print-table mb-2">
                                 <thead>
                                     <tr class="border-b-2 border-slate-800 text-slate-700">
-                                        <th class="text-left font-bold w-1/2" id="lbl-pv-desc">項目</th>
+                                        <th class="text-center font-bold w-12" id="lbl-pv-no">序號</th>
+                                        <th class="text-left font-bold" id="lbl-pv-desc">項目</th>
                                         <th class="text-center font-bold w-16" id="lbl-pv-qty">數量</th>
                                         <th class="text-right font-bold w-24" id="lbl-pv-price">單價</th>
                                         <th class="text-right font-bold w-24" id="lbl-pv-amt">金額</th>
@@ -395,7 +405,7 @@
                             <!-- 5. Terms & Signatures Wrapper -->
                             <div id="pv-terms-container" class="page-break-avoid flex flex-col">
                                 <!-- Terms -->
-                                <div id="pv-terms-wrapper" class="mb-8">
+                                <div id="pv-terms-wrapper" class="mb-4">
                                     <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1 inline-block" id="lbl-pv-terms">條款與備註</div>
                                     <div class="text-[11px] text-slate-600 whitespace-pre-wrap leading-relaxed font-medium" id="pv-terms"></div>
                                 </div>
@@ -470,23 +480,23 @@
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
                     <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-blue-500">
                         <div class="text-[10px] xl:text-xs font-bold text-slate-500 mb-1">總營業額</div>
-                        <div class="text-lg xl:text-xl font-black text-slate-800 truncate" id="dash-total-rev">MOP 0</div>
+                        <div class="text-lg xl:text-xl font-black text-slate-800 truncate" id="dash-total-rev">-</div>
                     </div>
                     <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-rose-500">
                         <div class="text-[10px] xl:text-xs font-bold text-slate-500 mb-1">總成本</div>
-                        <div class="text-lg xl:text-xl font-black text-rose-500 truncate" id="dash-cost">MOP 0</div>
+                        <div class="text-lg xl:text-xl font-black text-rose-500 truncate" id="dash-cost">-</div>
                     </div>
                     <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-emerald-600">
                         <div class="text-[10px] xl:text-xs font-bold text-slate-500 mb-1">總盈利 (利潤)</div>
-                        <div class="text-lg xl:text-xl font-black text-emerald-600 truncate" id="dash-profit">MOP 0</div>
+                        <div class="text-lg xl:text-xl font-black text-emerald-600 truncate" id="dash-profit">-</div>
                     </div>
                     <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-emerald-400">
                         <div class="text-[10px] xl:text-xs font-bold text-slate-500 mb-1">已完成 / 已收款</div>
-                        <div class="text-lg xl:text-xl font-black text-emerald-500 truncate" id="dash-paid">MOP 0</div>
+                        <div class="text-lg xl:text-xl font-black text-emerald-500 truncate" id="dash-paid">-</div>
                     </div>
                     <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-amber-500">
                         <div class="text-[10px] xl:text-xs font-bold text-slate-500 mb-1">待收款 / 進行中</div>
-                        <div class="text-lg xl:text-xl font-black text-amber-500 truncate" id="dash-pending">MOP 0</div>
+                        <div class="text-lg xl:text-xl font-black text-amber-500 truncate" id="dash-pending">-</div>
                     </div>
                 </div>
 
@@ -500,7 +510,7 @@
                                 <input type="text" id="dash-search" placeholder="搜尋項目名稱/客戶..." oninput="dashCurrentPage=1; updateDashboard()" class="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:border-theme outline-none w-48">
                             </div>
                             <div class="text-xs font-bold bg-theme-light text-theme px-3 py-1.5 rounded-lg">
-                                列表總計: <span id="dash-table-total">MOP 0</span>
+                                列表數據依各項貨幣獨立顯示
                             </div>
                         </div>
                     </div>
@@ -815,7 +825,7 @@
         let db, auth, currentUserId, cloudAppId;
         let cloudDebounceTimer;
         
-        // 🔒 最高權限管理員設定 (升級為支援多位管理員)
+        // 🔒 最高權限管理員設定 (強制授權)
         const ROOT_ADMINS = ['oliver@nestgrowthmarketing.com', 'hongkammeng@gmail.com'];
         let isAdmin = false;
 
@@ -850,10 +860,10 @@
                         let isAllowed = false;
                         errorMsg.classList.add('hidden');
                         
-                        // 確保轉為全小寫比對，防止大小寫差異
+                        // 確保轉為全小寫比對
                         const userEmailLower = user.email ? user.email.toLowerCase() : "";
                         
-                        // 1. 檢查是否為最高管理員名單內
+                        // 1. 檢查是否為最高管理員名單內 (秒速通過)
                         if (ROOT_ADMINS.includes(userEmailLower)) {
                             isAllowed = true;
                             isAdmin = true;
@@ -862,7 +872,6 @@
                             isAdmin = false;
                             try {
                                 const { getDoc, doc } = window.FirebaseModule;
-                                // 登入前向雲端拉取最新的 Settings 資料核對 Email
                                 const docSnap = await getDoc(doc(db, `artifacts/${cloudAppId}/shared/company_data/crm/settings`));
                                 if (docSnap.exists()) {
                                     const data = docSnap.data();
@@ -870,10 +879,10 @@
                                     if (authEmails.includes(userEmailLower)) {
                                         isAllowed = true;
                                     } else {
-                                        errorMsg.innerHTML = `抱歉，帳號 <b>${userEmailLower}</b> 沒有存取權限。<br>系統白名單內未找到此 Email。<br>請聯絡管理員開通。`;
+                                        errorMsg.innerHTML = `⚠️ 權限阻擋<br>帳號 <b>${userEmailLower}</b> 不在系統白名單內。<br>請聯絡管理員為您開通權限。`;
                                     }
                                 } else {
-                                    errorMsg.innerHTML = `抱歉，雲端找不到授權設定檔案。<br>請聯絡管理員先行登入並建立設定。`;
+                                    errorMsg.innerHTML = `⚠️ 雲端設定檔遺失<br>請聯絡管理員先行登入並建立設定。`;
                                 }
                             } catch (e) {
                                 console.error("驗證權限錯誤:", e);
@@ -921,7 +930,7 @@
                     const errorMsg = document.getElementById('login-error');
                     const loginBtn = document.getElementById('btn-login-google');
                     
-                    // 防連點機制：顯示正在載入
+                    // 防連點機制
                     if (loginBtn) {
                         loginBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在呼叫 Google...';
                         loginBtn.disabled = true;
@@ -936,7 +945,7 @@
                         
                         // 精準攔截視窗被封鎖的錯誤
                         if (err.code === 'auth/popup-blocked') {
-                            errorMsg.innerHTML = "⚠️ <b>登入視窗被瀏覽器封鎖了！</b><br>請點擊網址列右側的圖示「允許彈出式視窗」，或使用無痕模式再試一次。";
+                            errorMsg.innerHTML = "⚠️ <b>登入視窗被瀏覽器封鎖了！</b><br>請點擊網址列右側的圖示「一律允許顯示彈出式視窗」，或使用無痕模式再試一次。";
                         } else if (err.code === 'auth/popup-closed-by-user') {
                             errorMsg.innerHTML = "提示：您關閉了登入視窗，請重新點擊登入。";
                         } else {
@@ -954,7 +963,7 @@
                     }
                 };
 
-                // 掛載登出功能供按鈕使用
+                // 掛載登出功能
                 window.logoutSystem = () => {
                     signOut(auth).then(() => {
                         window.location.reload();
@@ -970,7 +979,7 @@
             const { onSnapshot, collection, doc, setDoc } = window.FirebaseModule;
             const basePath = `artifacts/${cloudAppId}/shared/company_data`;
 
-            // 監聽 CRM 資料 (自動下載客戶、供應商、員工，解決資料不互通問題)
+            // 監聽 CRM 資料 (雙向同步：自動下載客戶、供應商、員工)
             onSnapshot(doc(db, basePath, 'crm', 'clients'), (snap) => {
                 if (snap.exists() && !snap.metadata.hasPendingWrites) {
                     clients = snap.data().list || [];
@@ -990,29 +999,32 @@
                     employees = snap.data().list || [];
                     localStorage.setItem('nest_employees', JSON.stringify(employees));
                     renderEmployeeList();
+                    // 如果編輯器開著，也要更新下拉選單
+                    if(!document.getElementById('editor-panel').classList.contains('hidden')) {
+                        loadEditor();
+                    }
                 }
             });
 
-            // 1. 監聽專案 (Projects)
+            // 監聽專案 (Projects)
             onSnapshot(collection(db, basePath, 'projects'), { includeMetadataChanges: true }, (snap) => {
                 let hasExternalChanges = false;
                 let needsActiveReload = false;
 
-                // 自動遷移本機資料至雲端 (若雲端為空但本機有資料)
+                // 自動遷移本機資料至雲端
                 if (snap.docs.length === 0 && projects.length > 0) {
                     console.log("☁️ 正在將本機專案備份至雲端...");
                     projects.forEach(p => setDoc(doc(db, basePath, 'projects', p.id), p).catch(console.error));
                     return;
                 }
 
-                // 智能分析變更：只處理真正被修改的檔案，避免覆蓋正在打字的內容
                 snap.docChanges().forEach(change => {
                     const docSnap = change.doc;
                     if (change.type === 'removed') {
                         projects = projects.filter(p => p.id !== docSnap.id);
                         hasExternalChanges = true;
                     } else {
-                        // 如果不是本機正在上傳的狀態 (代表是其他設備改的)
+                        // 如果不是本機正在上傳的狀態
                         if (!docSnap.metadata.hasPendingWrites) {
                             hasExternalChanges = true;
                             const idx = projects.findIndex(p => p.id === docSnap.id);
@@ -1031,7 +1043,6 @@
                     localStorage.setItem('nest_projects', JSON.stringify(projects));
                     renderProjectList();
                     updateDashboard();
-                    // 若當前開啟的單據被其他裝置修改，則自動重新載入編輯器
                     if (needsActiveReload) loadEditor();
                 }
             }, (err) => console.error("Projects 同步錯誤:", err));
@@ -1045,11 +1056,11 @@
             
             if (statusEl && !isManual) {
                 statusEl.innerText = '自動儲存中...';
-                statusEl.className = 'text-[10px] font-bold w-16 text-right text-theme';
+                statusEl.className = 'text-[10px] font-bold w-20 text-right text-theme';
             }
 
             try {
-                // 使用 Promise.all 將所有資料庫「同時」打包上傳，徹底消滅時間差(Race Condition)
+                // 使用 Promise.all 將所有資料庫「同時」打包上傳
                 const promises = [
                     setDoc(doc(db, basePath, 'crm', 'clients'), { list: clients }),
                     setDoc(doc(db, basePath, 'crm', 'suppliers'), { list: suppliers }),
@@ -1064,8 +1075,7 @@
                 
                 if (statusEl) {
                     statusEl.innerText = '雲端已同步';
-                    statusEl.className = 'text-[10px] font-bold w-16 text-right text-emerald-500';
-                    // 3秒後清除狀態文字
+                    statusEl.className = 'text-[10px] font-bold w-20 text-right text-emerald-500';
                     setTimeout(() => { if(statusEl.innerText === '雲端已同步') statusEl.innerText = ''; }, 3000);
                 }
                 
@@ -1076,11 +1086,10 @@
                 console.error("上傳至雲端失敗:", err);
                 
                 if (statusEl) {
-                    statusEl.innerText = '等待重試...';
-                    statusEl.className = 'text-[10px] font-bold w-16 text-right text-red-500';
+                    statusEl.innerText = '儲存失敗重試中';
+                    statusEl.className = 'text-[10px] font-bold w-20 text-right text-red-500';
                 }
                 
-                // 只有手動點擊按鈕才彈出錯誤，避免打字時一直被彈窗干擾
                 if (isManual) {
                     alert("⚠️ 雲端存檔失敗！\n可能是網路不穩定或頻繁寫入被系統暫時阻擋，請稍後再試。");
                 }
@@ -1091,11 +1100,10 @@
             const statusEl = document.getElementById('sync-status');
             if (statusEl) {
                 statusEl.innerText = '手動儲存中...';
-                statusEl.className = 'text-[10px] font-bold w-16 text-right text-theme';
+                statusEl.className = 'text-[10px] font-bold w-20 text-right text-theme';
             }
             await syncToCloud(true);
         }
-        // --- 雲端邏輯結束 ---
         
         // Dictionary for Language Switching
         const i18n = {
@@ -1148,12 +1156,12 @@
             const statusEl = document.getElementById('sync-status');
             if (statusEl && !statusEl.innerText.includes('儲存中')) {
                 statusEl.innerText = '等待儲存...';
-                statusEl.className = 'text-[10px] font-bold w-16 text-right text-slate-400';
+                statusEl.className = 'text-[10px] font-bold w-20 text-right text-slate-400';
             }
 
             if (useCloud && currentUserId) {
                 clearTimeout(cloudDebounceTimer);
-                // 延長延遲時間到 1500 毫秒 (1.5秒)，大幅減少 Firebase 頻繁寫入阻擋
+                // 延長延遲時間到 1500 毫秒，大幅減少 Firebase 頻繁寫入阻擋
                 cloudDebounceTimer = setTimeout(() => syncToCloud(false), 1500); 
             }
         }
@@ -1175,14 +1183,9 @@
             return `${prefix}${String(maxSeq + 1).padStart(2, '0')}`;
         }
 
-        // Generate Default Dates
-        function getTodayStr() {
-            return new Date().toISOString().split('T')[0];
-        }
+        function getTodayStr() { return new Date().toISOString().split('T')[0]; }
         function getThreeMonthsLaterStr() {
-            const d = new Date();
-            d.setMonth(d.getMonth() + 3);
-            return d.toISOString().split('T')[0];
+            const d = new Date(); d.setMonth(d.getMonth() + 3); return d.toISOString().split('T')[0];
         }
 
         // UI Controls
@@ -1219,10 +1222,7 @@
             else if(view === 'employees') renderEmployeeList();
         }
 
-        function goToProject(id) {
-            switchMainView('workspace');
-            selectProject(id);
-        }
+        function goToProject(id) { switchMainView('workspace'); selectProject(id); }
 
         // Project Management
         function createNewProject() {
@@ -1238,6 +1238,7 @@
                 currency: 'MOP',
                 issueDate: getTodayStr(),
                 dueDate: getThreeMonthsLaterStr(),
+                receiptDate: '',
                 items: [{ desc: '', qty: 1, price: 0, isPageBreak: false }],
                 costs: [],
                 terms: i18n[lang].defTermsQuote,
@@ -1353,13 +1354,21 @@
 
             document.getElementById('inp-date').value = p.issueDate;
             
-            // Due date visibility & logic
+            // Due date & Receipt date visibility logic
             const dueCon = document.getElementById('editor-due-container');
+            const receiptCon = document.getElementById('editor-receipt-date-container');
+            
             if (p.docType === 'quote') {
                 dueCon.style.display = 'block';
                 document.getElementById('inp-due').value = p.dueDate || getThreeMonthsLaterStr();
+                receiptCon.style.display = 'none';
+            } else if (p.docType === 'receipt') {
+                dueCon.style.display = 'none';
+                receiptCon.style.display = 'block';
+                document.getElementById('inp-receipt-date').value = p.receiptDate || '';
             } else {
                 dueCon.style.display = 'none';
+                receiptCon.style.display = 'none';
             }
 
             document.getElementById('inp-terms').value = p.terms;
@@ -1507,6 +1516,8 @@
             
             if(p.docType === 'quote') {
                 p.dueDate = document.getElementById('inp-due').value;
+            } else if(p.docType === 'receipt') {
+                p.receiptDate = document.getElementById('inp-receipt-date').value;
             }
 
             const newTerms = document.getElementById('inp-terms').value;
@@ -1514,7 +1525,6 @@
             
             p.termsBreak = document.getElementById('inp-terms-break').checked;
 
-            // Language switch might change default terms if not edited
             if(!p.termsEdited) {
                 if(p.docType === 'quote') p.terms = i18n[p.lang].defTermsQuote;
                 else if(p.docType === 'invoice') p.terms = i18n[p.lang].defTermsInvoice;
@@ -1533,7 +1543,6 @@
             if(!p) return;
             p.docType = type;
             
-            // Smart terms switch
             if(!p.termsEdited) {
                 if(type === 'quote') p.terms = i18n[p.lang].defTermsQuote;
                 else if(type === 'invoice') p.terms = i18n[p.lang].defTermsInvoice;
@@ -1867,7 +1876,6 @@
             closeEmployeeModal();
             renderEmployeeList();
             
-            // Reload Editor if open to update employee dropdown
             if(!document.getElementById('editor-panel').classList.contains('hidden')) {
                 loadEditor();
             }
@@ -1968,6 +1976,7 @@
             document.getElementById('lbl-pv-client-auth').innerText = t.lblClientAuth;
 
             // Table headers
+            document.getElementById('lbl-pv-no').innerText = p.lang === 'zh-HK' ? '序號' : 'No.';
             document.getElementById('lbl-pv-desc').innerText = t.lblDesc;
             document.getElementById('lbl-pv-qty').innerText = t.lblQty;
             document.getElementById('lbl-pv-price').innerText = t.lblPrice;
@@ -1978,19 +1987,19 @@
             const tbody = document.getElementById('pv-items-tbody');
             tbody.innerHTML = '';
             let total = 0;
+            let itemSequence = 1;
 
             p.items.forEach(item => {
                 if (item.isPageBreak) {
                     const tr = document.createElement('tr');
-                    // Injecting page break class for html2pdf and repeating table header
                     tr.className = 'html2pdf__page-break manual-page-break';
-                    tr.innerHTML = `<td colspan="4" class="p-0 border-0 h-0 text-[0px]"></td>`;
+                    tr.innerHTML = `<td colspan="5" class="p-0 border-0 h-0 text-[0px]"></td>`;
                     tbody.appendChild(tr);
                     
-                    // Re-inject header after break
                     const headerTr = document.createElement('tr');
                     headerTr.className = 'border-b-2 border-slate-800 text-slate-700 font-bold bg-[#f1f5f9]';
                     headerTr.innerHTML = `
+                        <td class="text-center w-12 py-2">${p.lang === 'zh-HK' ? '序號' : 'No.'}</td>
                         <td class="text-left py-2">${t.lblDesc} (Cont.)</td>
                         <td class="text-center w-16 py-2">${t.lblQty}</td>
                         <td class="text-right w-24 py-2">${t.lblPrice}</td>
@@ -2003,12 +2012,14 @@
                     const tr = document.createElement('tr');
                     tr.className = 'border-b border-slate-100 font-medium page-break-avoid';
                     tr.innerHTML = `
+                        <td class="text-center py-3 text-slate-500">${String(itemSequence).padStart(2, '0')}</td>
                         <td class="text-left py-3 pr-2 whitespace-pre-wrap">${item.desc || '-'}</td>
                         <td class="text-center py-3">${item.qty}</td>
                         <td class="text-right py-3">${item.price.toFixed(2)}</td>
                         <td class="text-right py-3 font-bold">${amt.toFixed(2)}</td>
                     `;
                     tbody.appendChild(tr);
+                    itemSequence++;
                 }
             });
 
@@ -2026,7 +2037,7 @@
                 termsBox.classList.remove('html2pdf__page-break', 'manual-page-break', 'pt-8');
             }
             
-            // Images (Logo and Stamp) safely handled to prevent Promise rejection
+            // Images
             const imgLogo = document.getElementById('pv-logo');
             if(settings.logo) { imgLogo.src = settings.logo; imgLogo.classList.remove('hidden'); } 
             else { imgLogo.removeAttribute('src'); imgLogo.classList.add('hidden'); }
@@ -2046,20 +2057,15 @@
                     const pageDiv = document.createElement('div');
                     pageDiv.className = 'a4-preview-container extra-page-preview px-[12mm] py-[12mm] bg-white shadow-xl relative text-slate-800 shrink-0 mt-8 html2pdf__page-break manual-page-break flex flex-col';
                     
-                    // (已移除此處複製第一頁頁首的語法，確保附加頁維持乾淨版面)
-                    
-                    // Content Body (Flex-1 會把頁尾推到最底下)
                     const bodyDiv = document.createElement('div');
                     bodyDiv.className = 'pt-4 pb-8 text-xs text-slate-800 whitespace-pre-wrap leading-[1.8] font-medium flex-1';
                     bodyDiv.innerText = ep.content || '';
                     pageDiv.appendChild(bodyDiv);
                     
-                    // Extra Page Spacer
                     const spacerDiv = document.createElement('div');
                     spacerDiv.className = 'extra-page-spacer';
                     pageDiv.appendChild(spacerDiv);
 
-                    // Clone Footer
                     const footerClone = footerMaster.cloneNode(true);
                     footerClone.removeAttribute('id');
                     pageDiv.appendChild(footerClone);
@@ -2068,7 +2074,7 @@
                 });
             }
 
-            // Adjust Footer Position to always sit at the bottom of the A4 page
+            // Adjust Footer Position
             setTimeout(adjustFooterPosition, 50);
         }
 
@@ -2077,19 +2083,17 @@
             const mmToPx = 3.779527559;
             const pageHeightPx = 267 * mmToPx; 
             
-            // ⭐️ 關鍵修改：加入 12mm (約 45px) 的安全緩衝高度，防止因小數點誤差導致頁尾被擠到第二頁
-            const safetyMarginPx = 12 * mmToPx; 
+            // 加入 15mm (約 56px) 的安全緩衝高度，絕對防止頁尾被擠到下一頁
+            const safetyMarginPx = 15 * mmToPx; 
 
             // 1. Adjust Main Page
             const mainContainer = document.getElementById('printable-a4');
             const mainSpacer = document.getElementById('pv-spacer');
             if(mainContainer && mainSpacer) {
-                mainSpacer.style.height = '0px'; // Reset first to get natural height
+                mainSpacer.style.height = '0px'; // Reset first
                 const height = mainContainer.offsetHeight;
                 const remainder = height % pageHeightPx;
                 
-                // 只有在當前頁面還有足夠的剩餘空間時，才加入推擠器。
-                // 減去 safetyMarginPx，確保高度絕對不會超過 A4 邊界！
                 if (remainder > 0 && remainder < (pageHeightPx - safetyMarginPx)) {
                     mainSpacer.style.height = (pageHeightPx - remainder - safetyMarginPx) + 'px';
                 }
@@ -2127,13 +2131,12 @@
             ['logo', 'stamp'].forEach(t => {
                 const img = document.getElementById(`set-img-${t}`);
                 const txt = document.getElementById(`set-txt-${t}`);
-                if (!img || !txt) return; // 加上防空值檢查
+                if (!img || !txt) return; 
                 
                 if(settings[t]) { img.src = settings[t]; img.classList.remove('hidden'); txt.classList.add('hidden'); }
                 else { img.classList.add('hidden'); txt.classList.remove('hidden'); }
             });
             
-            // 若為管理員，則載入授權名單
             if(isAdmin) renderAuthorizedEmails();
         }
 
@@ -2172,7 +2175,6 @@
             
             if(!settings.authorizedEmails) settings.authorizedEmails = [];
             
-            // 檢查是否已經在白名單或已經是最高管理員
             if(settings.authorizedEmails.includes(email) || ROOT_ADMINS.includes(email)) {
                 alert("此帳號已經在授權名單中，或已經是最高管理員帳號！");
                 return;
@@ -2182,10 +2184,7 @@
             input.value = '';
             saveData();
             
-            // 強制瞬間寫入雲端，並等待完成 (不觸發手動存檔的重複彈窗)
-            if (useCloud && currentUserId) {
-                await syncToCloud(false);
-            }
+            if (useCloud && currentUserId) await syncToCloud(false);
             
             renderAuthorizedEmails();
             alert(`已成功授權 ${email} 登入系統！\n對方現在可以使用該 Google 帳號登入了。`);
@@ -2198,10 +2197,7 @@
                 settings.authorizedEmails.splice(idx, 1);
                 saveData();
                 
-                // 強制瞬間寫入雲端，並等待完成
-                if (useCloud && currentUserId) {
-                    await syncToCloud(false);
-                }
+                if (useCloud && currentUserId) await syncToCloud(false);
                 
                 renderAuthorizedEmails();
             }
@@ -2247,7 +2243,6 @@
             let tRev=0, tPaid=0, tPend=0, count=0, tCost=0, tProfit=0;
             let filteredProjects = [];
             
-            // Map types & status
             const tNames = { quote:'報價單', invoice:'發票', receipt:'收據' };
             const sNames = { draft:'草稿', quoted:'已報價', in_progress:'進行中', pending_payment:'待收款', completed:'已完成', sent:'已發送', paid:'已付款', cancelled:'已取消' };
             const sColors = { draft:'text-slate-500', quoted:'text-blue-500', in_progress:'text-amber-500', pending_payment:'text-rose-500', completed:'text-emerald-500', sent:'text-blue-500', paid:'text-emerald-500', cancelled:'text-red-500' };
@@ -2265,6 +2260,8 @@
                     let profitAmt = amt - costAmt;
                     
                     if(p.status !== 'cancelled') {
+                        // Note: For multi-currency, a true dashboard needs exchange rates.
+                        // Here we just simple-sum everything to avoid complex logic.
                         tRev += amt;
                         tCost += costAmt;
                         tProfit += profitAmt;
@@ -2277,16 +2274,14 @@
                 }
             });
 
-            // Update KPI
-            document.getElementById('dash-total-rev').innerText = `MOP ${tRev.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('dash-cost').innerText = `MOP ${tCost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('dash-profit').innerText = `MOP ${tProfit.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('dash-paid').innerText = `MOP ${tPaid.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('dash-pending').innerText = `MOP ${tPend.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            // Update KPI (Simple sum)
+            document.getElementById('dash-total-rev').innerText = tRev.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            document.getElementById('dash-cost').innerText = tCost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            document.getElementById('dash-profit').innerText = tProfit.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            document.getElementById('dash-paid').innerText = tPaid.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            document.getElementById('dash-pending').innerText = tPend.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
             
             if(document.getElementById('dash-count')) document.getElementById('dash-count').innerText = count;
-            
-            document.getElementById('dash-table-total').innerText = `營業額: MOP ${tRev.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} | 盈利: MOP ${tProfit.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
 
             // Pagination Logic
             const totalPages = Math.ceil(filteredProjects.length / dashItemsPerPage) || 1;
@@ -2328,25 +2323,21 @@
             });
         }
 
-        function dashChangePage(dir) {
-            dashCurrentPage += dir;
-            updateDashboard();
-        }
+        function dashChangePage(dir) { dashCurrentPage += dir; updateDashboard(); }
 
         // PDF Export Handler
         function exportPDF() {
             try {
-                forceSyncToCloud(); // 匯出前強制同步一次
+                // 匯出時強制觸發一次雲端存檔
+                forceSyncToCloud();
                 
-                // Export Target is the wrapper containing all pages
                 const el = document.getElementById('pdf-export-wrapper');
                 const p = getActive();
                 if (!p) return; 
                 
-                // 1. Backup classes
                 const originalClasses = el.className;
                 
-                // 2. Temporarily fix widths and remove shadow for clean export
+                // Temporarily fix widths and remove shadow for clean export
                 el.className = "w-[210mm]"; 
                 
                 const containers = el.querySelectorAll('.a4-preview-container');
@@ -2356,21 +2347,13 @@
                     c.style.margin = '0';
                 });
                 
-                // Recalculate spacer WITHOUT padding for perfect PDF alignment
                 adjustFooterPosition();
 
-                // Options: 15mm top/bottom margins, format A4
                 const opt = {
                     margin: [15, 0, 15, 0], 
                     filename: `${p.docNo}_${p.custName || 'Client'}.pdf`,
                     image: { type: 'jpeg', quality: 1 },
-                    html2canvas: { 
-                        scale: 2, 
-                        useCORS: true, 
-                        allowTaint: true, 
-                        scrollX: 0,
-                        scrollY: 0
-                    },
+                    html2canvas: { scale: 2, useCORS: true, allowTaint: true, scrollX: 0, scrollY: 0 },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                     pagebreak: { mode: ['css', 'legacy'] }
                 };
@@ -2379,13 +2362,12 @@
                 
                 worker.save()
                 .then(() => {
-                    // 3. Restore classes after export
                     el.className = originalClasses;
                     containers.forEach(c => {
                         c.className = c.getAttribute('data-orig-class');
                         c.style.margin = '';
                     });
-                    adjustFooterPosition(); // Restore UI spacer
+                    adjustFooterPosition();
                 })
                 .catch(err => {
                     console.warn("Caught PDF export error (ignoring):", err);
@@ -2394,7 +2376,7 @@
                         c.className = c.getAttribute('data-orig-class');
                         c.style.margin = '';
                     });
-                    adjustFooterPosition(); // Restore UI spacer
+                    adjustFooterPosition();
                 });
 
             } catch (err) {
