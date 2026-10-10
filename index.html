@@ -783,10 +783,12 @@
         
         let activeProjectId = null;
         let activeEmployeeId = null;
+        let dashCurrentPage = 1;
+        const dashItemsPerPage = 10;
         
         let useCloud = false; let db, auth, currentUserId, cloudAppId; let cloudDebounceTimer;
 
-        // Firebase Init (Simplified for space)
+        // Firebase Init
         window.addEventListener('firebase-loaded', async () => {
             const firebaseConfig = {
                 apiKey: "AIzaSyAQd6Mz7_wMyOqgCRva0jcqlWHwljy4nSY",
@@ -816,9 +818,10 @@
         });
 
         function startCloudListeners() {
-            const { onSnapshot, collection, doc } = window.FirebaseModule;
+            const { onSnapshot, doc } = window.FirebaseModule;
             const basePath = `artifacts/${cloudAppId}/shared/company_data`;
 
+            // 監聽員工資料
             onSnapshot(doc(db, basePath, 'crm', 'employees'), (snap) => {
                 if (snap.exists() && !snap.metadata.hasPendingWrites) {
                     employees = snap.data().list || [];
@@ -829,7 +832,26 @@
                     }
                 }
             });
-            // (Other listeners for projects, settings, clients skipped for brevity, standard logic applies)
+
+            // 監聽單據項目資料 (修復消失的單據)
+            onSnapshot(doc(db, basePath, 'core', 'projects'), (snap) => {
+                if (snap.exists() && !snap.metadata.hasPendingWrites) {
+                    projects = snap.data().list || [];
+                    localStorage.setItem('nest_projects', JSON.stringify(projects));
+                    renderProjectList();
+                    if(activeProjectId) renderProjectEditor();
+                    updateDashboard();
+                }
+            });
+
+            // 監聽公司設置
+            onSnapshot(doc(db, basePath, 'core', 'settings'), (snap) => {
+                if (snap.exists() && !snap.metadata.hasPendingWrites) {
+                    settings = snap.data().config || settings;
+                    localStorage.setItem('nest_settings', JSON.stringify(settings));
+                    renderPreview();
+                }
+            });
         }
 
         async function syncToCloud(isManual = false) {
@@ -840,9 +862,14 @@
             if (statusEl && !isManual) { statusEl.innerText = '儲存中...'; statusEl.className = 'text-[10px] font-bold text-theme'; }
 
             try {
+                // 資料淨化，剔除 undefined
+                const pureProjects = JSON.parse(JSON.stringify(projects));
                 const pureEmployees = JSON.parse(JSON.stringify(employees));
+                const pureSettings = JSON.parse(JSON.stringify(settings));
+
                 await setDoc(doc(db, basePath, 'crm', 'employees'), { list: pureEmployees });
-                // (Save other collections...)
+                await setDoc(doc(db, basePath, 'core', 'projects'), { list: pureProjects });
+                await setDoc(doc(db, basePath, 'core', 'settings'), { config: pureSettings });
                 
                 if (statusEl) { statusEl.innerText = '已同步'; statusEl.className = 'text-[10px] font-bold text-emerald-500'; setTimeout(() => statusEl.innerText='', 3000); }
                 if (isManual) alert('✅ 雲端同步成功！');
@@ -855,7 +882,9 @@
         async function forceSyncToCloud() { await syncToCloud(true); }
 
         function saveData() {
+            localStorage.setItem('nest_projects', JSON.stringify(projects));
             localStorage.setItem('nest_employees', JSON.stringify(employees));
+            localStorage.setItem('nest_settings', JSON.stringify(settings));
             if (useCloud && currentUserId) {
                 clearTimeout(cloudDebounceTimer);
                 cloudDebounceTimer = setTimeout(() => syncToCloud(false), 1500); 
@@ -863,9 +892,15 @@
         }
 
         // ==========================================
-        // 🌟 新增：人事與薪資系統 (HR Dashboard) 🌟
+        // UI Navigation & Layout
         // ==========================================
-        
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            if(sidebar) sidebar.classList.toggle('hidden');
+        }
+        function toggleUserMenu() {
+            document.getElementById('user-menu').classList.toggle('hidden');
+        }
         function switchMainView(view) {
             ['workspace', 'dashboard', 'clients', 'suppliers', 'employees'].forEach(v => {
                 const el = document.getElementById(`view-${v}`);
@@ -880,9 +915,369 @@
                 renderEmployeeSidebar();
                 if(employees.length > 0 && !activeEmployeeId) selectEmployee(employees[0].id);
             }
+            if(view === 'dashboard') updateDashboard();
         }
 
-        // 1. Sidebar 渲染
+        // ==========================================
+        // WORKSPACE: Projects & Editor
+        // ==========================================
+        function renderProjectList() {
+            const list = document.getElementById('project-list');
+            if(!list) return;
+            const search = document.getElementById('project-search').value.toLowerCase();
+            list.innerHTML = '';
+            
+            projects.forEach(p => {
+                if(search && !(p.projName||'').toLowerCase().includes(search) && !(p.custName||'').toLowerCase().includes(search) && !(p.docNo||'').toLowerCase().includes(search)) return;
+                
+                const d = document.createElement('div');
+                const isAct = p.id === activeProjectId;
+                d.className = `p-3 rounded-lg border cursor-pointer transition ${isAct ? 'border-theme bg-theme-light shadow-sm' : 'border-transparent hover:bg-slate-50 border-b-slate-100'}`;
+                d.onclick = () => { activeProjectId = p.id; renderProjectEditor(); };
+                
+                d.innerHTML = `
+                    <div class="flex justify-between items-start mb-1">
+                        <div class="font-bold text-xs text-slate-800 truncate pr-2">${p.projName || '未命名項目'}</div>
+                        <span class="text-[9px] font-bold text-slate-400 bg-slate-100 px-1 rounded">${p.docType === 'quote'?'報價':(p.docType === 'invoice'?'發票':'收據')}</span>
+                    </div>
+                    <div class="text-[10px] text-slate-500 truncate">${p.custName || '無客戶'} | ${p.docNo || '-'}</div>
+                `;
+                list.appendChild(d);
+            });
+        }
+
+        function createNewProject() {
+            const date = new Date();
+            const docNo = 'NP' + date.getFullYear().toString().substring(2) + (date.getMonth()+1).toString().padStart(2,'0') + String(Math.floor(Math.random()*100)).padStart(2,'0');
+            const newProj = {
+                id: 'PROJ_' + Date.now(),
+                docNo: docNo, docType: 'quote',
+                projName: '全新專案', custName: '', custContact: '',
+                status: 'draft', currency: 'MOP',
+                issueDate: date.toISOString().split('T')[0], dueDate: '',
+                employeeId: '', terms: '',
+                items: [{ id: Date.now(), desc: '設計服務', qty: 1, price: 0 }],
+                costs: []
+            };
+            projects.unshift(newProj);
+            activeProjectId = newProj.id;
+            saveData();
+            switchMainView('workspace');
+            renderProjectList();
+            renderProjectEditor();
+        }
+
+        function deleteCurrentProject() {
+            if(!activeProjectId) return;
+            if(confirm('確定要永久刪除此單據嗎？')) {
+                projects = projects.filter(p => p.id !== activeProjectId);
+                activeProjectId = projects.length > 0 ? projects[0].id : null;
+                saveData();
+                renderProjectList();
+                renderProjectEditor();
+            }
+        }
+
+        function updateDocType(type) {
+            if(!activeProjectId) return;
+            const p = projects.find(x => x.id === activeProjectId);
+            p.docType = type;
+            saveData();
+            renderProjectEditor();
+        }
+
+        function renderProjectEditor() {
+            const p = projects.find(x => x.id === activeProjectId);
+            if(!p) {
+                document.getElementById('editor-panel').classList.add('hidden');
+                document.getElementById('preview-toolbar').classList.add('hidden');
+                document.getElementById('preview-scroll-area').classList.add('hidden');
+                document.getElementById('empty-state').classList.remove('hidden');
+                return;
+            }
+            
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('editor-panel').classList.remove('hidden');
+            document.getElementById('preview-toolbar').classList.remove('hidden');
+            document.getElementById('preview-scroll-area').classList.remove('hidden');
+
+            document.getElementById('inp-proj-name').value = p.projName || '';
+            document.getElementById('inp-cust-name').value = p.custName || '';
+            document.getElementById('inp-cust-contact').value = p.custContact || '';
+            document.getElementById('inp-status').value = p.status || 'draft';
+            document.getElementById('inp-currency').value = p.currency || 'MOP';
+            document.getElementById('inp-date').value = p.issueDate || '';
+            document.getElementById('inp-due').value = p.dueDate || '';
+            document.getElementById('inp-terms').value = p.terms || '';
+            document.getElementById('inp-terms-break').checked = !!p.termsBreak;
+
+            // Load Employees into Select
+            const empSelect = document.getElementById('inp-employee');
+            empSelect.innerHTML = '<option value="">-- 無 --</option>';
+            employees.forEach(e => {
+                if(e.status !== 'inactive') {
+                    empSelect.innerHTML += `<option value="${e.id}">${e.name}</option>`;
+                }
+            });
+            empSelect.value = p.employeeId || '';
+
+            ['quote', 'invoice', 'receipt'].forEach(t => {
+                document.getElementById(`btn-type-${t}`).className = p.docType === t ? 'flex-1 py-2 rounded-md transition font-bold bg-white text-theme shadow-sm border border-slate-200' : 'flex-1 py-2 rounded-md transition text-slate-500 hover:bg-slate-50';
+            });
+
+            // Render Items
+            const itemsContainer = document.getElementById('items-container');
+            itemsContainer.innerHTML = '';
+            (p.items || []).forEach((item, idx) => {
+                if(item.isPageBreak) {
+                    itemsContainer.innerHTML += `
+                        <div class="flex items-center gap-2 text-slate-400 bg-slate-100 p-2 rounded justify-center relative group">
+                            <span class="text-[10px] font-bold"><i class="fa-solid fa-scissors mr-1"></i> -- 換頁符號 --</span>
+                            <button onclick="removeItem(${idx})" class="absolute right-2 text-red-400 opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    `;
+                } else {
+                    itemsContainer.innerHTML += `
+                        <div class="flex gap-2 items-start bg-slate-50 p-2 rounded border border-slate-200">
+                            <textarea oninput="updateItem(${idx}, 'desc', this.value)" class="flex-1 text-xs p-2 border border-slate-200 rounded outline-none focus:border-theme resize-none" rows="2" placeholder="項目描述">${item.desc||''}</textarea>
+                            <div class="flex flex-col gap-2 w-24">
+                                <input type="number" value="${item.qty||1}" oninput="updateItem(${idx}, 'qty', this.value)" class="w-full text-xs p-1.5 border border-slate-200 rounded outline-none focus:border-theme" placeholder="數量">
+                                <input type="number" value="${item.price||0}" oninput="updateItem(${idx}, 'price', this.value)" class="w-full text-xs p-1.5 border border-slate-200 rounded outline-none focus:border-theme" placeholder="單價">
+                            </div>
+                            <button onclick="removeItem(${idx})" class="text-red-500 p-2 hover:bg-red-50 rounded transition"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    `;
+                }
+            });
+
+            renderPreview();
+        }
+
+        function syncInputToProject() {
+            if(!activeProjectId) return;
+            const p = projects.find(x => x.id === activeProjectId);
+            
+            p.projName = document.getElementById('inp-proj-name').value;
+            p.custName = document.getElementById('inp-cust-name').value;
+            p.custContact = document.getElementById('inp-cust-contact').value;
+            p.status = document.getElementById('inp-status').value;
+            p.currency = document.getElementById('inp-currency').value;
+            p.employeeId = document.getElementById('inp-employee').value;
+            p.issueDate = document.getElementById('inp-date').value;
+            p.dueDate = document.getElementById('inp-due').value;
+            p.terms = document.getElementById('inp-terms').value;
+            p.termsBreak = document.getElementById('inp-terms-break').checked;
+            
+            saveData();
+            renderProjectList();
+            renderPreview();
+        }
+
+        function addItem() {
+            const p = projects.find(x => x.id === activeProjectId);
+            if(!p.items) p.items = [];
+            p.items.push({ id: Date.now(), desc: '', qty: 1, price: 0 });
+            saveData(); renderProjectEditor();
+        }
+        
+        function addPageBreak() {
+            const p = projects.find(x => x.id === activeProjectId);
+            if(!p.items) p.items = [];
+            p.items.push({ id: Date.now(), isPageBreak: true });
+            saveData(); renderProjectEditor();
+        }
+
+        function updateItem(idx, field, value) {
+            const p = projects.find(x => x.id === activeProjectId);
+            p.items[idx][field] = field === 'desc' ? value : parseFloat(value) || 0;
+            saveData(); renderPreview();
+        }
+
+        function removeItem(idx) {
+            const p = projects.find(x => x.id === activeProjectId);
+            p.items.splice(idx, 1);
+            saveData(); renderProjectEditor();
+        }
+
+        // ==========================================
+        // PREVIEW & EXPORT
+        // ==========================================
+        function renderPreview() {
+            const p = projects.find(x => x.id === activeProjectId);
+            if(!p) return;
+
+            // Header Info
+            document.getElementById('pv-cust-name').innerText = p.custName || '';
+            document.getElementById('pv-cust-contact').innerText = p.custContact || '';
+            
+            const titles = { quote: '報價單', invoice: '發票', receipt: '收據' };
+            document.getElementById('pv-doc-title').innerText = titles[p.docType] || '報價單';
+            
+            document.getElementById('pv-date').innerText = p.issueDate || '';
+            document.getElementById('pv-doc-no').innerText = p.docNo || '';
+            
+            if(p.docType === 'quote') {
+                document.getElementById('pv-due-container').style.display = 'flex';
+                document.getElementById('editor-due-container').style.display = 'block';
+                document.getElementById('pv-due').innerText = p.dueDate || '';
+            } else {
+                document.getElementById('pv-due-container').style.display = 'none';
+                document.getElementById('editor-due-container').style.display = 'none';
+            }
+
+            // Company Assets
+            if (settings.logo) { document.getElementById('pv-logo').src = settings.logo; document.getElementById('pv-logo').classList.remove('hidden'); }
+            else { document.getElementById('pv-logo').classList.add('hidden'); }
+            
+            if (settings.stamp) { document.getElementById('pv-stamp').src = settings.stamp; document.getElementById('pv-stamp').classList.remove('hidden'); }
+            else { document.getElementById('pv-stamp').classList.add('hidden'); }
+
+            // Items Rendering
+            const tbody = document.getElementById('pv-items-tbody');
+            tbody.innerHTML = '';
+            let total = 0; let rowNum = 1;
+
+            (p.items || []).forEach(item => {
+                if (item.isPageBreak) {
+                    const tr = document.createElement('tr');
+                    tr.className = 'manual-page-break';
+                    tr.innerHTML = `<td colspan="5"></td>`;
+                    tbody.appendChild(tr);
+                } else {
+                    const amt = (parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0);
+                    total += amt;
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-slate-100 text-slate-800';
+                    tr.innerHTML = `
+                        <td class="text-center align-top font-mono text-slate-400">${rowNum++}</td>
+                        <td class="text-left whitespace-pre-wrap leading-relaxed py-2">${item.desc || ''}</td>
+                        <td class="text-center align-top py-2">${item.qty || 0}</td>
+                        <td class="text-right align-top py-2">${(p.currency||'MOP')} ${(item.price||0).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td class="text-right align-top font-bold py-2">${(p.currency||'MOP')} ${amt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            });
+
+            document.getElementById('pv-total').innerText = `${p.currency || 'MOP'} ${total.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+            
+            // Terms
+            document.getElementById('pv-terms').innerText = p.terms || '';
+            if(p.termsBreak) {
+                document.getElementById('pv-terms-wrapper').classList.add('manual-page-break');
+            } else {
+                document.getElementById('pv-terms-wrapper').classList.remove('manual-page-break');
+            }
+        }
+
+        function exportPDF() {
+            if(!activeProjectId) return;
+            const p = projects.find(x => x.id === activeProjectId);
+            const opt = {
+                margin: 0,
+                filename: `${p.docNo}_${p.custName}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            const element = document.getElementById('pdf-export-wrapper');
+            html2pdf().set(opt).from(element).save();
+        }
+
+        // ==========================================
+        // DASHBOARD
+        // ==========================================
+        function updateDashboard() {
+            const range = document.getElementById('dash-time-range').value;
+            const customDates = document.getElementById('dash-custom-dates');
+            if(range === 'custom') customDates.style.display = 'flex';
+            else customDates.style.display = 'none';
+
+            const today = new Date();
+            let dStart = new Date(0), dEnd = new Date(3000, 0, 1);
+            
+            if (range === 'this_month') {
+                dStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                dEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
+            } else if (range === 'last_month') {
+                dStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                dEnd = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59);
+            } else if (range === 'this_quarter') {
+                const qStartMonth = Math.floor(today.getMonth() / 3) * 3;
+                dStart = new Date(today.getFullYear(), qStartMonth, 1);
+                dEnd = new Date(today.getFullYear(), qStartMonth + 3, 0, 23, 59, 59);
+            } else if (range === 'this_year') {
+                dStart = new Date(today.getFullYear(), 0, 1);
+                dEnd = new Date(today.getFullYear(), 11, 31, 23, 59, 59);
+            }
+
+            let tRev=0, tPaid=0, tPend=0, count=0, tCost=0, tProfit=0;
+            let filteredProjects = [];
+            const tNames = { quote:'報價單', invoice:'發票', receipt:'收據' };
+            const sNames = { draft:'草稿', quoted:'已報價', in_progress:'進行中', pending_payment:'待收款', completed:'已完成', sent:'已發送', paid:'已付款', cancelled:'已取消' };
+            const sColors = { draft:'text-slate-500', quoted:'text-blue-500', in_progress:'text-amber-500', pending_payment:'text-rose-500', completed:'text-emerald-500' };
+
+            projects.forEach(p => {
+                let pDate = new Date();
+                if (p.issueDate) {
+                    const [py, pm, pd] = p.issueDate.split('-');
+                    if (py && pm && pd) pDate = new Date(py, pm - 1, pd, 12, 0, 0); 
+                }
+
+                if(pDate >= dStart && pDate <= dEnd) {
+                    let amt = 0;
+                    (p.items || []).forEach(i => { if(!i.isPageBreak) amt += ((parseFloat(i.qty) || 0) * (parseFloat(i.price) || 0)); });
+                    let costAmt = 0;
+                    if(p.costs) p.costs.forEach(c => { costAmt += (parseFloat(c.amount) || 0); });
+                    let profitAmt = amt - costAmt;
+                    
+                    if(p.status !== 'cancelled') { tRev += amt; tCost += costAmt; tProfit += profitAmt; }
+                    if(['completed', 'paid'].includes(p.status)) tPaid += amt;
+                    if(['quoted', 'in_progress', 'pending_payment', 'sent'].includes(p.status)) tPend += amt;
+                    count++;
+                    filteredProjects.push({ ...p, totalAmt: amt, costAmt, profitAmt });
+                }
+            });
+
+            document.getElementById('dash-total-rev').innerText = `MOP ${tRev.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+            document.getElementById('dash-cost').innerText = `MOP ${tCost.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+            document.getElementById('dash-profit').innerText = `MOP ${tProfit.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+            document.getElementById('dash-paid').innerText = `MOP ${tPaid.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+            document.getElementById('dash-pending').innerText = `MOP ${tPend.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+
+            // Render Table
+            const tbody = document.getElementById('dash-table-body');
+            if(tbody) {
+                tbody.innerHTML = '';
+                filteredProjects.slice(0, 15).forEach(p => {
+                    let empName = '-';
+                    if(p.employeeId) {
+                        const e = employees.find(x => x.id === p.employeeId);
+                        if(e) empName = e.name;
+                    }
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-slate-50 transition';
+                    tr.innerHTML = `
+                        <td class="px-4 py-3">${p.issueDate || '-'}</td>
+                        <td class="px-4 py-3 font-bold"><button onclick="switchMainView('workspace'); activeProjectId='${p.id}'; renderProjectList(); renderProjectEditor();" class="text-theme hover:underline">${p.docNo || '-'}</button></td>
+                        <td class="px-4 py-3">${tNames[p.docType] || '-'}</td>
+                        <td class="px-4 py-3 max-w-[150px] truncate">${p.projName || '-'}</td>
+                        <td class="px-4 py-3 max-w-[150px] truncate">${p.custName || '-'}</td>
+                        <td class="px-4 py-3">${empName}</td>
+                        <td class="px-4 py-3 font-bold ${sColors[p.status] || 'text-slate-500'}">${sNames[p.status] || '-'}</td>
+                        <td class="px-4 py-3 text-right font-bold text-slate-800">${p.currency || 'MOP'} ${(p.totalAmt||0).toLocaleString()}</td>
+                        <td class="px-4 py-3 text-right font-bold text-emerald-600">${p.currency || 'MOP'} ${(p.profitAmt||0).toLocaleString()}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+
+        function dashChangePage(dir) { /* Basic pagination implementation if needed */ }
+
+        // ==========================================
+        // HR SYSTEM (Employees)
+        // ==========================================
         function renderEmployeeSidebar() {
             const list = document.getElementById('employee-sidebar-list');
             const search = document.getElementById('employee-search').value.toLowerCase();
@@ -894,15 +1289,14 @@
                 const d = document.createElement('div');
                 const isAct = e.id === activeEmployeeId;
                 const statusColor = e.status === 'inactive' ? 'bg-slate-100 text-slate-500' : 'bg-emerald-100 text-emerald-600';
-                const statusText = e.status === 'inactive' ? '離職' : '在職';
                 
-                d.className = `p-3 rounded-lg border cursor-pointer transition ${isAct ? 'border-theme bg-theme-light' : 'border-transparent hover:bg-slate-50 border-b-slate-100'}`;
+                d.className = `p-3 rounded-lg border cursor-pointer transition ${isAct ? 'border-theme bg-theme-light shadow-sm' : 'border-transparent hover:bg-slate-50 border-b-slate-100'}`;
                 d.onclick = () => selectEmployee(e.id);
                 
                 d.innerHTML = `
                     <div class="flex justify-between items-center mb-1">
                         <div class="font-bold text-xs text-slate-800">${e.name}</div>
-                        <div class="text-[9px] px-1.5 py-0.5 rounded font-bold ${statusColor}">${statusText}</div>
+                        <div class="text-[9px] px-1.5 py-0.5 rounded font-bold ${statusColor}">${e.status === 'inactive' ? '離職' : '在職'}</div>
                     </div>
                     <div class="text-[10px] text-slate-500 truncate"><i class="fa-solid fa-phone mr-1"></i> ${e.phone || '無電話'}</div>
                 `;
@@ -910,7 +1304,6 @@
             });
         }
 
-        // 2. 選擇員工與畫面渲染
         function selectEmployee(id) {
             activeEmployeeId = id;
             document.getElementById('employee-profile-panel').classList.remove('hidden');
@@ -923,7 +1316,6 @@
             const e = employees.find(x => x.id === activeEmployeeId);
             if(!e) return;
 
-            // Header
             document.getElementById('emp-profile-avatar').innerText = e.name.charAt(0).toUpperCase();
             document.getElementById('emp-profile-name').innerText = e.name;
             document.getElementById('emp-profile-idcard').innerText = e.idcard || '未填寫身分證';
@@ -938,13 +1330,11 @@
                 document.getElementById('emp-profile-leave-box').style.display = 'none';
             }
 
-            // Basic Info
             document.getElementById('emp-profile-join').innerText = e.joinDate || '未設定';
             document.getElementById('emp-profile-leave').innerText = e.leaveDate || '-';
             document.getElementById('emp-profile-address').innerText = e.address || '未填寫';
             document.getElementById('emp-profile-salary').innerText = `MOP ${(parseFloat(e.baseSalary)||0).toLocaleString()}`;
 
-            // Documents
             const docsList = document.getElementById('emp-docs-list');
             docsList.innerHTML = '';
             if(!e.documents || e.documents.length === 0) {
@@ -964,13 +1354,11 @@
                 });
             }
 
-            // Payrolls
             const payrollList = document.getElementById('emp-payroll-list');
             payrollList.innerHTML = '';
             if(!e.payrolls || e.payrolls.length === 0) {
                 payrollList.innerHTML = '<tr><td colspan="4" class="px-3 py-6 text-center text-slate-400">尚無發薪紀錄。</td></tr>';
             } else {
-                // 排序：最新的月份在最上面
                 const sortedPayrolls = [...e.payrolls].sort((a,b) => b.month.localeCompare(a.month));
                 sortedPayrolls.forEach((pr, idx) => {
                     const actualIdx = e.payrolls.indexOf(pr);
@@ -982,18 +1370,12 @@
                         <td class="px-3 py-3"><span class="px-2 py-0.5 rounded text-[9px] font-bold ${pr.status==='paid'?'bg-emerald-100 text-emerald-600':'bg-amber-100 text-amber-600'}">${pr.status==='paid'?'已發放':'待處理'}</span></td>
                         <td class="px-3 py-3 text-center">
                             <button onclick="removePayroll(${actualIdx})" class="text-slate-400 hover:text-red-500 p-1"><i class="fa-solid fa-trash-can"></i></button>
-                            <button class="text-slate-300 cursor-not-allowed p-1 ml-1" title="一鍵薪資單 (即將推出)"><i class="fa-solid fa-file-invoice"></i></button>
                         </td>
                     `;
                     payrollList.appendChild(tr);
                 });
             }
         }
-
-        // 3. 員工編輯 Modal 控制
-        document.getElementById('edit-employee-status').addEventListener('change', function(e) {
-            document.getElementById('leave-date-container').style.display = e.target.value === 'inactive' ? 'block' : 'none';
-        });
 
         function openEmployeeModal() {
             const modal = document.getElementById('modal-employee');
@@ -1009,7 +1391,6 @@
                 document.getElementById('edit-employee-idcard').value = e.idcard || '';
                 document.getElementById('edit-employee-salary').value = e.baseSalary || '';
                 document.getElementById('edit-employee-address').value = e.address || '';
-                
                 document.getElementById('leave-date-container').style.display = (e.status === 'inactive') ? 'block' : 'none';
                 t.innerText = '編輯員工資料';
             } else {
@@ -1023,9 +1404,8 @@
             modal.classList.remove('hidden');
         }
 
-        function editCurrentEmployee() { openEmployeeModal(); }
-        
         function closeEmployeeModal() { document.getElementById('modal-employee').classList.add('hidden'); }
+        function editCurrentEmployee() { openEmployeeModal(); }
 
         function saveEmployee() {
             const id = document.getElementById('edit-employee-id').value;
@@ -1045,15 +1425,13 @@
 
             if(id) {
                 const idx = employees.findIndex(x => x.id === id);
-                if(idx > -1) { employees[idx] = { ...employees[idx], ...empData }; }
+                if(idx > -1) employees[idx] = { ...employees[idx], ...empData };
             } else {
                 const newId = Date.now().toString();
                 employees.push({ id: newId, ...empData, payrolls: [], documents: [] });
                 activeEmployeeId = newId;
             }
-            
-            saveData(); closeEmployeeModal();
-            selectEmployee(activeEmployeeId);
+            saveData(); closeEmployeeModal(); selectEmployee(activeEmployeeId);
         }
 
         function deleteCurrentEmployee() {
@@ -1067,19 +1445,15 @@
             }
         }
 
-        // 4. 薪資與檔案操作
         function addPayrollRecord() {
             const e = employees.find(x => x.id === activeEmployeeId);
-            const defaultMonth = new Date().toISOString().substring(0, 7); // YYYY-MM
+            const defaultMonth = new Date().toISOString().substring(0, 7);
             let month = prompt('請輸入發薪月份 (格式: YYYY-MM)', defaultMonth);
             if(!month) return;
-            
             let amount = prompt(`請輸入 ${month} 的實發薪資 (MOP)`, e.baseSalary || 0);
             if(amount === null) return;
-            
             if(!e.payrolls) e.payrolls = [];
             e.payrolls.push({ month, amount: parseFloat(amount)||0, status: 'paid' });
-            
             saveData(); renderEmployeeProfile();
         }
 
@@ -1092,15 +1466,10 @@
 
         function addEmployeeDoc() {
             const e = employees.find(x => x.id === activeEmployeeId);
-            let docName = prompt('請輸入檔案名稱 (例如: 身分證副本、勞工局合約)');
+            let docName = prompt('請輸入檔案名稱 (例如: 身分證副本)');
             if(!docName) return;
-            
             if(!e.documents) e.documents = [];
-            e.documents.push({ 
-                name: docName, 
-                date: new Date().toISOString().split('T')[0]
-            });
-            
+            e.documents.push({ name: docName, date: new Date().toISOString().split('T')[0] });
             saveData(); renderEmployeeProfile();
         }
 
@@ -1111,9 +1480,44 @@
             }
         }
 
-        // --- App Boot ---
+        // ==========================================
+        // SETTINGS & APP BOOT
+        // ==========================================
+        function openSettings() { document.getElementById('modal-settings').classList.remove('hidden'); }
+        function closeSettings() { document.getElementById('modal-settings').classList.add('hidden'); }
+        
+        function handleImageUpload(event, type) {
+            const file = event.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                settings[type] = e.target.result;
+                document.getElementById(`set-img-${type}`).src = e.target.result;
+                document.getElementById(`set-img-${type}`).classList.remove('hidden');
+                document.getElementById(`set-txt-${type}`).classList.add('hidden');
+                saveData(); renderPreview();
+            }
+            reader.readAsDataURL(file);
+        }
+        function clearImage(type) {
+            settings[type] = null;
+            document.getElementById(`set-img-${type}`).classList.add('hidden');
+            document.getElementById(`set-txt-${type}`).classList.remove('hidden');
+            saveData(); renderPreview();
+        }
+
         window.onload = () => {
-            if(projects.length > 0) activeProjectId = projects[0].id;
+            renderProjectList();
+            if(projects.length > 0) {
+                activeProjectId = projects[0].id;
+                renderProjectEditor();
+            } else {
+                document.getElementById('editor-panel').classList.add('hidden');
+                document.getElementById('preview-toolbar').classList.add('hidden');
+                document.getElementById('preview-scroll-area').classList.add('hidden');
+                document.getElementById('empty-state').classList.remove('hidden');
+            }
+            updateDashboard();
         };
     </script>
 </body>
