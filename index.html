@@ -1275,6 +1275,44 @@
 
         function dashChangePage(dir) { /* Basic pagination implementation if needed */ }
 
+        // 新增：匯出 Excel 報表功能
+        function exportDashboardToExcel() {
+            if (dashFilteredProjects.length === 0) {
+                alert('目前沒有資料可以匯出喔！');
+                return;
+            }
+
+            const headers = ['開單日期', '單據編號', '類型', '項目名稱', '客戶', '負責人', '狀態', '營業額 (MOP)', '成本 (MOP)', '盈利 (MOP)'];
+            const tNames = { quote:'報價單', invoice:'發票', receipt:'收據' };
+            const sNames = { draft:'草稿', quoted:'已報價', in_progress:'進行中', pending_payment:'待收款', completed:'已完成', sent:'已發送', paid:'已付款', cancelled:'已取消' };
+            const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+            
+            const rows = dashFilteredProjects.map(p => {
+                let empName = '-';
+                if (p.employeeId) {
+                    const e = employees.find(x => x.id === p.employeeId);
+                    if (e) empName = e.name;
+                }
+                return [
+                    escapeCsv(p.issueDate), escapeCsv(p.docNo), escapeCsv(tNames[p.docType] || p.docType),
+                    escapeCsv(p.projName), escapeCsv(p.custName), escapeCsv(empName),
+                    escapeCsv(sNames[p.status] || p.status),
+                    (p.totalAmt || 0).toFixed(2), (p.costAmt || 0).toFixed(2), (p.profitAmt || 0).toFixed(2)
+                ].join(',');
+            });
+
+            const csvContent = [headers.join(','), ...rows].join('\n');
+            const bom = '\uFEFF'; // 加入 BOM 確保 Excel 點開中文絕對不會亂碼
+            const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `Nest財務報表_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
         // ==========================================
         // HR SYSTEM (Employees)
         // ==========================================
