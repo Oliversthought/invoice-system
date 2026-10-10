@@ -36,6 +36,7 @@
             }
         }
     </script>
+    
     <style>
         body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -326,6 +327,7 @@
                             <table class="w-full text-xs print-table mb-2">
                                 <thead>
                                     <tr class="border-b-2 border-slate-800 text-slate-700">
+                                        <!-- 已修復序號佔用寬度問題 -->
                                         <th class="text-center font-bold w-12" id="lbl-pv-no">序號</th>
                                         <th class="text-left font-bold" id="lbl-pv-desc">項目</th>
                                         <th class="text-center font-bold w-16" id="lbl-pv-qty">數量</th>
@@ -464,6 +466,10 @@
                                 <i class="fa-solid fa-search absolute left-3 top-2 text-slate-400 text-xs"></i>
                                 <input type="text" id="dash-search" placeholder="搜尋項目名稱/客戶..." oninput="dashCurrentPage=1; updateDashboard()" class="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:border-theme outline-none w-48">
                             </div>
+                            <!-- 匯出 Excel 按鈕 -->
+                            <button onclick="exportDashboardToExcel()" class="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 font-bold text-xs rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-file-excel"></i> 匯出 Excel
+                            </button>
                         </div>
                     </div>
                     <div class="overflow-x-auto">
@@ -771,8 +777,6 @@
         </div>
     </div>
     
-    <!-- (其他精簡的 Client / Supplier Modal 保持原邏輯，此處省略以確保核心代碼完整性，可自行補上) -->
-
     <script>
         // Data Store
         let projects = JSON.parse(localStorage.getItem('nest_projects')) || [];
@@ -785,6 +789,9 @@
         let activeEmployeeId = null;
         let dashCurrentPage = 1;
         const dashItemsPerPage = 10;
+        
+        // 全域變數：用於儲存當前 Dashboard 篩選出的結果，供匯出 Excel 使用
+        let dashFilteredProjects = [];
         
         let useCloud = false; let db, auth, currentUserId, cloudAppId; let cloudDebounceTimer;
 
@@ -821,26 +828,39 @@
             const { onSnapshot, doc } = window.FirebaseModule;
             const basePath = `artifacts/${cloudAppId}/shared/company_data`;
 
+            // 監聽單據項目資料 (加入防護：避免雲端空資料洗掉本地資料)
+            onSnapshot(doc(db, basePath, 'core', 'projects'), (snap) => {
+                if (snap.exists() && !snap.metadata.hasPendingWrites) {
+                    const cloudData = snap.data().list || [];
+                    
+                    if (cloudData.length === 0 && projects.length > 0) {
+                        // 雲端是空的，但本地有資料！這代表是第一次同步，保護本地資料並強制上傳
+                        syncToCloud(false);
+                    } else {
+                        // 正常同步雲端資料到本地
+                        projects = cloudData;
+                        localStorage.setItem('nest_projects', JSON.stringify(projects));
+                    }
+                    renderProjectList();
+                    if(activeProjectId) renderProjectEditor();
+                    updateDashboard();
+                }
+            });
+
             // 監聽員工資料
             onSnapshot(doc(db, basePath, 'crm', 'employees'), (snap) => {
                 if (snap.exists() && !snap.metadata.hasPendingWrites) {
-                    employees = snap.data().list || [];
-                    localStorage.setItem('nest_employees', JSON.stringify(employees));
+                    const cloudData = snap.data().list || [];
+                    if (cloudData.length === 0 && employees.length > 0) {
+                        syncToCloud(false);
+                    } else {
+                        employees = cloudData;
+                        localStorage.setItem('nest_employees', JSON.stringify(employees));
+                    }
                     if(!document.getElementById('view-employees').classList.contains('hidden')) {
                         renderEmployeeSidebar();
                         if(activeEmployeeId) selectEmployee(activeEmployeeId);
                     }
-                }
-            });
-
-            // 監聽單據項目資料 (修復消失的單據)
-            onSnapshot(doc(db, basePath, 'core', 'projects'), (snap) => {
-                if (snap.exists() && !snap.metadata.hasPendingWrites) {
-                    projects = snap.data().list || [];
-                    localStorage.setItem('nest_projects', JSON.stringify(projects));
-                    renderProjectList();
-                    if(activeProjectId) renderProjectEditor();
-                    updateDashboard();
                 }
             });
 
@@ -1190,9 +1210,11 @@
         function updateDashboard() {
             const range = document.getElementById('dash-time-range').value;
             const customDates = document.getElementById('dash-custom-dates');
+            
             if(range === 'custom') customDates.style.display = 'flex';
             else customDates.style.display = 'none';
 
+            // Calculate Dates (解決時區飄移問題)
             const today = new Date();
             let dStart = new Date(0), dEnd = new Date(3000, 0, 1);
             
@@ -1209,15 +1231,33 @@
             } else if (range === 'this_year') {
                 dStart = new Date(today.getFullYear(), 0, 1);
                 dEnd = new Date(today.getFullYear(), 11, 31, 23, 59, 59);
+            } else if (range === 'custom') {
+                const s = document.getElementById('dash-start').value;
+                const e = document.getElementById('dash-end').value;
+                if(s) {
+                    const [sy, sm, sd] = s.split('-');
+                    dStart = new Date(sy, sm - 1, sd);
+                }
+                if(e) {
+                    const [ey, em, ed] = e.split('-');
+                    dEnd = new Date(ey, em - 1, ed, 23, 59, 59);
+                }
             }
 
+            const search = document.getElementById('dash-search').value.toLowerCase();
+            
             let tRev=0, tPaid=0, tPend=0, count=0, tCost=0, tProfit=0;
-            let filteredProjects = [];
+            
+            // 重置全域變數，供匯出 Excel 使用
+            dashFilteredProjects = [];
+            
+            // Map types & status
             const tNames = { quote:'報價單', invoice:'發票', receipt:'收據' };
             const sNames = { draft:'草稿', quoted:'已報價', in_progress:'進行中', pending_payment:'待收款', completed:'已完成', sent:'已發送', paid:'已付款', cancelled:'已取消' };
-            const sColors = { draft:'text-slate-500', quoted:'text-blue-500', in_progress:'text-amber-500', pending_payment:'text-rose-500', completed:'text-emerald-500' };
+            const sColors = { draft:'text-slate-500', quoted:'text-blue-500', in_progress:'text-amber-500', pending_payment:'text-rose-500', completed:'text-emerald-500', sent:'text-blue-500', paid:'text-emerald-500', cancelled:'text-red-500' };
 
             projects.forEach(p => {
+                // 強制本地時間解析，杜絕時區帶來的日期判定錯誤
                 let pDate = new Date();
                 if (p.issueDate) {
                     const [py, pm, pd] = p.issueDate.split('-');
@@ -1225,57 +1265,95 @@
                 }
 
                 if(pDate >= dStart && pDate <= dEnd) {
+                    // 加入防護網：如果舊資料缺少某些欄位，自動補齊空字串避免當機
+                    const pName = (p.projName || '').toLowerCase();
+                    const cName = (p.custName || '').toLowerCase();
+                    const dNo = (p.docNo || '').toLowerCase();
+                    
+                    if(search && !pName.includes(search) && !cName.includes(search) && !dNo.includes(search)) return;
+                    
                     let amt = 0;
                     (p.items || []).forEach(i => { if(!i.isPageBreak) amt += ((parseFloat(i.qty) || 0) * (parseFloat(i.price) || 0)); });
+
                     let costAmt = 0;
                     if(p.costs) p.costs.forEach(c => { costAmt += (parseFloat(c.amount) || 0); });
                     let profitAmt = amt - costAmt;
                     
-                    if(p.status !== 'cancelled') { tRev += amt; tCost += costAmt; tProfit += profitAmt; }
+                    if(p.status !== 'cancelled') {
+                        tRev += amt;
+                        tCost += costAmt;
+                        tProfit += profitAmt;
+                    }
                     if(['completed', 'paid'].includes(p.status)) tPaid += amt;
                     if(['quoted', 'in_progress', 'pending_payment', 'sent'].includes(p.status)) tPend += amt;
                     count++;
-                    filteredProjects.push({ ...p, totalAmt: amt, costAmt, profitAmt });
+                    
+                    dashFilteredProjects.push({ ...p, totalAmt: amt, costAmt: costAmt, profitAmt: profitAmt });
                 }
             });
 
-            document.getElementById('dash-total-rev').innerText = `MOP ${tRev.toLocaleString(undefined, {minimumFractionDigits:2})}`;
-            document.getElementById('dash-cost').innerText = `MOP ${tCost.toLocaleString(undefined, {minimumFractionDigits:2})}`;
-            document.getElementById('dash-profit').innerText = `MOP ${tProfit.toLocaleString(undefined, {minimumFractionDigits:2})}`;
-            document.getElementById('dash-paid').innerText = `MOP ${tPaid.toLocaleString(undefined, {minimumFractionDigits:2})}`;
-            document.getElementById('dash-pending').innerText = `MOP ${tPend.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+            // Update KPI
+            document.getElementById('dash-total-rev').innerText = `MOP ${tRev.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('dash-cost').innerText = `MOP ${tCost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('dash-profit').innerText = `MOP ${tProfit.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('dash-paid').innerText = `MOP ${tPaid.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('dash-pending').innerText = `MOP ${tPend.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            
+            // Pagination Logic
+            const totalPages = Math.ceil(dashFilteredProjects.length / dashItemsPerPage) || 1;
+            if(dashCurrentPage > totalPages) dashCurrentPage = totalPages;
+            if(dashCurrentPage < 1) dashCurrentPage = 1;
+
+            if(document.getElementById('dash-page-info')) {
+                document.getElementById('dash-page-info').innerText = `共 ${dashFilteredProjects.length} 筆，第 ${dashCurrentPage}/${totalPages} 頁`;
+            }
+
+            const startIdx = (dashCurrentPage - 1) * dashItemsPerPage;
+            const paginatedProjects = dashFilteredProjects.slice(startIdx, startIdx + dashItemsPerPage);
 
             // Render Table
             const tbody = document.getElementById('dash-table-body');
-            if(tbody) {
-                tbody.innerHTML = '';
-                filteredProjects.slice(0, 15).forEach(p => {
-                    let empName = '-';
-                    if(p.employeeId) {
-                        const e = employees.find(x => x.id === p.employeeId);
-                        if(e) empName = e.name;
-                    }
-                    const tr = document.createElement('tr');
-                    tr.className = 'hover:bg-slate-50 transition';
-                    tr.innerHTML = `
-                        <td class="px-4 py-3">${p.issueDate || '-'}</td>
-                        <td class="px-4 py-3 font-bold"><button onclick="switchMainView('workspace'); activeProjectId='${p.id}'; renderProjectList(); renderProjectEditor();" class="text-theme hover:underline">${p.docNo || '-'}</button></td>
-                        <td class="px-4 py-3">${tNames[p.docType] || '-'}</td>
-                        <td class="px-4 py-3 max-w-[150px] truncate">${p.projName || '-'}</td>
-                        <td class="px-4 py-3 max-w-[150px] truncate">${p.custName || '-'}</td>
-                        <td class="px-4 py-3">${empName}</td>
-                        <td class="px-4 py-3 font-bold ${sColors[p.status] || 'text-slate-500'}">${sNames[p.status] || '-'}</td>
-                        <td class="px-4 py-3 text-right font-bold text-slate-800">${p.currency || 'MOP'} ${(p.totalAmt||0).toLocaleString()}</td>
-                        <td class="px-4 py-3 text-right font-bold text-emerald-600">${p.currency || 'MOP'} ${(p.profitAmt||0).toLocaleString()}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+            if(!tbody) return;
+            tbody.innerHTML = '';
+            
+            // 友善的空狀態提示
+            if (paginatedProjects.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="10" class="px-4 py-8 text-center text-slate-400">目前選擇的時間範圍內，沒有符合條件的項目。<br>您可以嘗試點擊右上角將時間切換為「全部時間」看看喔！</td></tr>`;
+                return;
             }
+
+            paginatedProjects.forEach(p => {
+                let empName = '-';
+                if(p.employeeId) {
+                    const e = employees.find(x => x.id === p.employeeId);
+                    if(e) empName = e.name;
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition';
+                tr.innerHTML = `
+                    <td class="px-4 py-3">${p.issueDate || '-'}</td>
+                    <td class="px-4 py-3 font-bold">
+                        <button onclick="switchMainView('workspace'); activeProjectId='${p.id}'; renderProjectList(); renderProjectEditor();" class="text-theme hover:text-blue-700 hover:underline transition" title="點擊查看或編輯單據">${p.docNo || '-'}</button>
+                    </td>
+                    <td class="px-4 py-3">${tNames[p.docType] || '-'}</td>
+                    <td class="px-4 py-3 max-w-[150px] truncate" title="${p.projName || ''}">${p.projName || '-'}</td>
+                    <td class="px-4 py-3 max-w-[150px] truncate" title="${p.custName || ''}">${p.custName || '-'}</td>
+                    <td class="px-4 py-3 max-w-[100px] truncate text-slate-600 font-medium" title="${empName}">${empName}</td>
+                    <td class="px-4 py-3 font-bold ${sColors[p.status] || 'text-slate-500'}">${sNames[p.status] || '-'}</td>
+                    <td class="px-4 py-3 text-right font-bold text-slate-800">${p.currency || 'MOP'} ${(p.totalAmt||0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                    <td class="px-4 py-3 text-right font-bold text-emerald-600">${p.currency || 'MOP'} ${(p.profitAmt||0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                `;
+                tbody.appendChild(tr);
+            });
         }
 
-        function dashChangePage(dir) { /* Basic pagination implementation if needed */ }
+        function dashChangePage(dir) { 
+            dashCurrentPage += dir;
+            updateDashboard();
+        }
 
-        // 新增：匯出 Excel 報表功能
+        // 匯出 Excel 報表功能
         function exportDashboardToExcel() {
             if (dashFilteredProjects.length === 0) {
                 alert('目前沒有資料可以匯出喔！');
@@ -1302,7 +1380,7 @@
             });
 
             const csvContent = [headers.join(','), ...rows].join('\n');
-            const bom = '\uFEFF'; // 加入 BOM 確保 Excel 點開中文絕對不會亂碼
+            const bom = '\uFEFF'; // 加入 BOM 確保 Excel 點開中文不會亂碼
             const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
             
             const link = document.createElement("a");
