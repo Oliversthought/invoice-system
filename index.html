@@ -82,22 +82,90 @@
 </head>
 <body class="h-screen flex flex-col text-slate-800 overflow-hidden">
 
-    <!-- Login Overlay -->
-    <div id="login-overlay" class="fixed inset-0 bg-slate-900 z-[100] flex items-center justify-center fade-in">
-        <div class="bg-white p-8 rounded-2xl shadow-2xl w-[400px] text-center border border-slate-100">
-            <div class="w-16 h-16 bg-theme-light text-theme rounded-full flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
-                <i class="fa-solid fa-shield-halved"></i>
+    <!-- Login Overlay / Landing Page -->
+    <div id="login-overlay" class="fixed inset-0 bg-slate-50 z-[100] flex flex-col fade-in overflow-y-auto">
+        <!-- Landing Navbar -->
+        <header class="h-16 px-6 sm:px-10 flex items-center justify-between shrink-0 bg-white border-b border-slate-100/50">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-theme flex items-center justify-center text-white shadow-sm">
+                    <i class="fa-solid fa-file-invoice text-sm"></i>
+                </div>
+                <span class="font-bold text-slate-800 tracking-wide text-lg">Nest Production</span>
             </div>
-            <h2 class="text-2xl font-bold text-slate-800 mb-2">系統登入</h2>
-            <p class="text-sm text-slate-500 mb-8">Nest Production 授權人員專用</p>
             
-            <button id="btn-login-google" onclick="loginWithGoogle()" class="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:bg-slate-50 hover:border-theme text-slate-700 font-bold py-3 px-4 rounded-xl shadow-sm transition group">
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5 group-hover:scale-110 transition" alt="Google">
-                使用 Google 帳號登入
-            </button>
-            
-            <p id="login-error" class="text-xs text-red-500 mt-4 hidden bg-red-50 p-2 rounded-lg border border-red-100"></p>
-        </div>
+            <div class="relative flex items-center">
+                <button id="btn-login-google" onclick="loginWithGoogle()" class="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 hover:border-theme text-slate-700 font-bold py-2 px-4 rounded-full shadow-sm transition group text-sm">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-4 h-4 group-hover:scale-110 transition" alt="Google">
+                    <span>使用 Google 登入</span>
+                </button>
+                <!-- Error Message Container (Absolute positioned to not break header) -->
+                <div class="absolute top-full right-0 mt-3 w-72 z-50">
+                    <p id="login-error" class="text-xs text-red-500 hidden bg-red-50 p-3 rounded-lg border border-red-200 shadow-xl"></p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Landing Content -->
+        <main class="flex-1 flex flex-col lg:flex-row items-center justify-center max-w-7xl mx-auto w-full px-6 lg:px-10 gap-12 py-12 lg:py-0">
+            <!-- Left Text Section -->
+            <div class="flex-1 space-y-6 text-center lg:text-left">
+                <div class="inline-block px-4 py-1.5 bg-theme-light text-theme font-bold text-xs rounded-full border border-theme/20 mb-2">
+                    Internal System v2.0
+                </div>
+                <h1 class="text-4xl lg:text-5xl font-black text-slate-800 leading-tight">
+                    讓每一份單據，<br>
+                    展現 <span class="text-theme">Nest</span> 的專業。
+                </h1>
+                <p class="text-sm sm:text-base text-slate-500 leading-relaxed max-w-lg mx-auto lg:mx-0 font-medium">
+                    這是一個專為 Nest Production 團隊打造的內部雲端系統。在這裡，您可以輕鬆生成報價單、發票與收據，即時掌握公司營運數據，並與團隊無縫協作，將繁瑣的行政流程化繁為簡。
+                </p>
+                <div class="flex flex-col sm:flex-row items-center gap-5 pt-4 justify-center lg:justify-start">
+                    <div class="flex items-center gap-2 text-sm font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-100">
+                        <i class="fa-solid fa-cloud-arrow-up text-theme"></i> 雲端即時同步
+                    </div>
+                    <div class="flex items-center gap-2 text-sm font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-100">
+                        <i class="fa-solid fa-users text-theme"></i> 多設備協作
+                    </div>
+                    <div class="flex items-center gap-2 text-sm font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-100">
+                        <i class="fa-solid fa-file-pdf text-theme"></i> 一鍵匯出 PDF
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Image/UI Section -->
+            <div class="flex-1 relative w-full max-w-md lg:max-w-none mt-8 lg:mt-0">
+                <!-- Decorative background elements -->
+                <div class="absolute -inset-4 bg-gradient-to-tr from-theme-light to-blue-50 rounded-3xl blur-2xl opacity-70"></div>
+                
+                <!-- Main Illustration / Image -->
+                <div class="relative bg-white p-2.5 rounded-2xl shadow-2xl border border-slate-100 transform lg:rotate-2 hover:rotate-0 transition duration-500">
+                    <!-- Unsplash high quality office/team image -->
+                    <img src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&w=800&q=80" alt="Team Collaboration" class="rounded-xl w-full h-auto object-cover aspect-[4/3] shadow-inner">
+                    
+                    <!-- Floating Card 1 -->
+                    <div class="absolute -bottom-6 -left-6 bg-white p-4 rounded-xl shadow-xl border border-slate-100 flex items-center gap-3 animate-[bounce_3s_infinite]">
+                        <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-lg shadow-inner">
+                            <i class="fa-solid fa-chart-line"></i>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">數據看板</p>
+                            <p class="text-sm font-black text-slate-800">營收即時掌握</p>
+                        </div>
+                    </div>
+
+                    <!-- Floating Card 2 -->
+                    <div class="absolute -top-6 -right-6 bg-white p-4 rounded-xl shadow-xl border border-slate-100 flex items-center gap-3 animate-[bounce_4s_infinite]">
+                        <div class="w-10 h-10 bg-theme-light text-theme rounded-full flex items-center justify-center text-lg shadow-inner">
+                            <i class="fa-solid fa-file-invoice"></i>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">自動化生成</p>
+                            <p class="text-sm font-black text-slate-800">A4 完美排版</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
 
     <!-- Top Navigation Bar -->
