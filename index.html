@@ -439,7 +439,8 @@
                             <table class="w-full text-xs print-table mb-2">
                                 <thead>
                                     <tr class="border-b-2 border-slate-800 text-slate-700">
-                                        <th class="text-left font-bold w-1/2" id="lbl-pv-desc">項目</th>
+                                        <th class="text-center font-bold w-12" id="lbl-pv-no">序號</th>
+                                        <th class="text-left font-bold" id="lbl-pv-desc">項目</th>
                                         <th class="text-center font-bold w-16" id="lbl-pv-qty">數量</th>
                                         <th class="text-right font-bold w-24" id="lbl-pv-price">單價</th>
                                         <th class="text-right font-bold w-24" id="lbl-pv-amt">金額</th>
@@ -1185,7 +1186,7 @@
             'zh-HK': {
                 docNames: { quote: '報價單', invoice: '發票', receipt: '收據' },
                 lblBillTo: '客戶資訊',
-                lblDate: '日期', lblDNo: '單據編號', lblValid: '報價有效日期',
+                lblNo: '序號', lblDate: '日期', lblDNo: '單據編號', lblValid: '報價有效日期',
                 lblDesc: '項目', lblQty: '數量', lblPrice: '單價', lblAmt: '金額',
                 lblTotal: '總額', lblTerms: '條款與備註', lblAccepted: '確認及接受',
                 lblBehalf: '謹代表', lblAuth: '授權簽名及公司蓋章', lblClientAuth: '客戶簽名及公司蓋章',
@@ -1196,7 +1197,7 @@
             'en': {
                 docNames: { quote: 'QUOTATION', invoice: 'INVOICE', receipt: 'RECEIPT' },
                 lblBillTo: 'BILL TO',
-                lblDate: 'Date', lblDNo: 'Doc Number', lblValid: 'Valid Until',
+                lblNo: 'No.', lblDate: 'Date', lblDNo: 'Doc Number', lblValid: 'Valid Until',
                 lblDesc: 'ITEM(S)', lblQty: 'Qty', lblPrice: 'Unit Price', lblAmt: 'Amount',
                 lblTotal: 'TOTAL AMOUNT', lblTerms: 'Terms & Conditions', lblAccepted: 'Acknowledge & accepted by',
                 lblBehalf: 'For and on behalf of', lblAuth: 'Authorized Signature & Company Stamp', lblClientAuth: 'Client Signature & Company Stamp',
@@ -2051,6 +2052,7 @@
             document.getElementById('lbl-pv-client-auth').innerText = t.lblClientAuth;
 
             // Table headers
+            document.getElementById('lbl-pv-no').innerText = t.lblNo || (p.lang === 'zh-HK' ? '序號' : 'No.');
             document.getElementById('lbl-pv-desc').innerText = t.lblDesc;
             document.getElementById('lbl-pv-qty').innerText = t.lblQty;
             document.getElementById('lbl-pv-price').innerText = t.lblPrice;
@@ -2164,8 +2166,8 @@
             const mmToPx = 3.779527559;
             const pageHeightPx = 267 * mmToPx; 
             
-            // ⭐️ 關鍵修改：加入 12mm (約 45px) 的安全緩衝高度，防止因小數點誤差導致頁尾被擠到第二頁
-            const safetyMarginPx = 12 * mmToPx; 
+            // ⭐️ 關鍵修改：將原本的 12mm 縮小到 8mm (約減少 15px)，讓頁尾往下沈更貼底
+            const safetyMarginPx = 8 * mmToPx; 
 
             // 1. Adjust Main Page
             const mainContainer = document.getElementById('printable-a4');
